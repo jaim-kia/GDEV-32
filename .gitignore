@@ -39,3 +39,7 @@
 
 # debug information files
 *.dwo
+
+# helper files
+output.txt
+model_loader.py
