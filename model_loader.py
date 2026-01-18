@@ -2,6 +2,17 @@
 import os
 import sys
 
+# USAGE: python model_loader.py <file>.obj
+#
+# this script reads a .obj file and outputs a formatted text file
+# tho before copy pasting to opengl, follow this checklist first:
+# 
+# 1. make sure obj file only has 'v', 'vt', 'vn', and 'f' lines
+# 2. make sure obj is accompanied by texture image file (png, jpg, etc)
+# 3. after running this script, check if vertices are exactly 11 values long (IMPORTANT!!!)
+#       add/remove padding as necessary (see comments in output_final_model function)
+# 4. copy output.txt contents into your opengl's vertex array oww yeah
+# 
 # marco notes :DD
 # 
 # obj notations
@@ -113,12 +124,11 @@ def assemble_final_model():
 
 def output_final_model():
     with open("output.txt", "w") as file:
-        # file.write(file_content)
         for v in final_vertices:
             for f in v:
                 file.write(f"{f}, ")
             file.write("1.0, 1.0, 1.0, ") # normal
-            file.write("1.0, 1.0, 1.0, ") # color
+            # file.write("1.0, 1.0, 1.0, ") # color
             file.write("\n")
     
     print(f"{len(final_vertices)} total vertices" )
@@ -129,13 +139,9 @@ def main(file):
     load_obj(file_path)
     print(f"Loaded {len(vertices)} vertices, {len(vertex_textures)} texture coordinates, {len(vertex_normals)} normals, and {len(faces)} faces.\n")
 
-    # print_model_data()
-
     assemble_final_model()
 
     output_final_model()
-
-    # print(final_vertices)
 
 
 if __name__ == "__main__":

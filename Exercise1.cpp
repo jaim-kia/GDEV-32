@@ -21,7 +21,7 @@
 // change this to your desired window attributes
 #define WINDOW_WIDTH  1600
 #define WINDOW_HEIGHT 900
-#define WINDOW_TITLE  "Model Viewer"
+#define WINDOW_TITLE  "Exercise 1"
 GLFWwindow *pWindow;
 
 glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 2.0f);
@@ -2478,7 +2478,7 @@ bool setup()
     
 
     // load our shader program
-    shader = gdevLoadShader("viewer.vs", "viewer.fs");
+    shader = gdevLoadShader("Exercise1.vs", "Exercise1.fs");
     if (! shader)
         return false;
 
@@ -2496,7 +2496,8 @@ void render()
     // glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // black
     // glClearColor(0.05f, 0.05f, 0.05f, 1.0f); // very dark gray
     // glClearColor(0.02f, 0.02f, 0.08f, 1.0f); // dark blue
-    glClearColor(0.03f, 0.06f, 0.05f, 1.0f); // dark desaturated green
+    // glClearColor(0.03f, 0.06f, 0.05f, 1.0f); // dark desaturated green
+    glClearColor(0.529f, 0.808f, 0.922f, 1.0f); // ghibli sky blue
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // using our shader program...
