@@ -128,7 +128,7 @@ def output_final_model():
             for f in v:
                 file.write(f"{f}, ")
             file.write("1.0, 1.0, 1.0, ") # normal
-            # file.write("1.0, 1.0, 1.0, ") # color
+            file.write("1.0, 1.0, 1.0, ") # color
             file.write("\n")
     
     print(f"{len(final_vertices)} total vertices" )
