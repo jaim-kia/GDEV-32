@@ -2477,7 +2477,7 @@ float vertices3[] = {
 
 
 // number of instances models
-unsigned int no0 = 25; // vertices *has to be perfect square
+unsigned int no0 = 100; // vertices *has to be perfect square
 unsigned int no1 = 0; // vertices1 
 unsigned int no2 = 0; // vertices2
 unsigned int no3 = 0; // vertices3
@@ -2487,6 +2487,44 @@ unsigned int no3 = 0; // vertices3
 GLuint vao;         // vertex array object (stores the render state for our vertex array)
 GLuint vbo;         // vertex buffer object (reserves GPU memory for our vertex array)
 GLuint shader;      // combined vertex and fragment shader
+
+void generateRandomPositions(glm::mat4* array, int count) {
+    // for (int i = 0; i < count; i++) {
+    //     float x = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
+    //     float y = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
+    //     float z = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
+    //     array[i] = glm::vec3(x, y, z);
+    // }
+    // glm::mat4 *modelMatrices;
+    // modelMatrices = new glm::mat4[count];
+    srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
+    float radius = 5.0;
+    float offset = 2.5f;
+    for (int i = 0; i < count; i++)
+    {
+        glm::mat4 model = glm::mat4(1.0f);
+        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
+        float angle = (float)i / (float)count * 360.0f;
+        float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float x = sin(angle) * radius + displacement;
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float y = displacement * 0.4f; // keep height of field smaller compared to width of x and z
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float z = cos(angle) * radius + displacement;
+        model = glm::translate(model, glm::vec3(x, y, z));
+
+        // 2. scale: Scale between 0.05 and 0.25f
+        float scale = static_cast<float>((rand() % 20) / 100.0 + 0.05);
+        model = glm::scale(model, glm::vec3(scale));
+
+        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
+        float rotAngle = static_cast<float>(rand() % 360);
+        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
+
+        // 4. now add to list of matrices
+        array[i] = model;
+    }
+}
 
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
@@ -2531,42 +2569,67 @@ bool setup()
         return false;
 
     // making offsets for instanced rendering
-    glm::vec3 translations[no0];
-    int index = 0;
-    float offset = 3.0f;
-    for (int z = -std::sqrt(no0)/2; z < std::sqrt(no0)/2; z++)
-    {
-        for (int x = -std::sqrt(no0)/2; x < std::sqrt(no0)/2; x++)
-        {
-            glm::vec3 translation;
-            translation.x = (float)x / 2.0f * offset;
-            translation.y = -0.5f;
-            translation.z = (float)z / 2.0f * offset;
-            translations[index++] = translation;
-        }
-    }
+    glm::mat4 translationMatrices[no0];
+    
+    // random positions and rotations
+    generateRandomPositions(translationMatrices, no0);
+    
+    // int index = 0;
+    // float offset = 3.0f;
+    // for (int z = -std::sqrt(no0)/2; z < std::sqrt(no0)/2; z++)
+    // {
+    //     for (int x = -std::sqrt(no0)/2; x < std::sqrt(no0)/2; x++)
+    //     {
+    //         glm::vec3 translation;
+    //         translation.x = (float)x / 2.0f * offset;
+    //         translation.y = -0.5f;
+    //         translation.z = (float)z / 2.0f * offset;
+    //         translations[index++] = translation;
+    //     }
+    // }
 
     // store instanced data in a vertex buffer object
-    GLuint vboInstanced;
-    glGenBuffers(1, &vboInstanced);
-    glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * no0, &translations[0], GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    // GLuint vboInstanced;
+    // glGenBuffers(1, &vboInstanced);
+    // glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
+    // glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * no0, &translationMatrices[0], GL_STATIC_DRAW);
+    // glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 
+    // glEnableVertexAttribArray(4);
+    // glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
+
+    // glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    // glBindBuffer(GL_ARRAY_BUFFER, 0);
+    // glVertexAttribDivisor(4, 1); // tell OpenGL this is an instanced vertex attribute.
+
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * no0, &translationMatrices[0], GL_STATIC_DRAW);
+    
+    GLuint VAO = vao;
+    glBindVertexArray(VAO);
+
+    std::size_t vec4Size = sizeof(glm::vec4);
     glEnableVertexAttribArray(4);
-    glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+    glVertexAttribDivisor(7, 1);
 
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glVertexAttribDivisor(4, 1); // tell OpenGL this is an instanced vertex attribute.
-
+    glBindVertexArray(0);
+    
     return true;
 }
 
-glm::vec3 calculate_normal(glm::vec3 a, glm::vec3 b){
-    return glm::normalize(cross(a, b));
-}
 
 // called by the main function to do rendering per frame
 void render()
@@ -2603,8 +2666,8 @@ void render()
     model = glm::translate(model, glm::vec3(0.0f, -0.5f, 0.0f));
     model = glm::rotate(model, glm::radians(t * rot_speed),
                                 glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)));
-    // model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f) * clamp_t);
-    model = glm::scale(model, glm::vec3(0.3f, 0.3f, 0.3f) * clamp_t);
+    model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f) * clamp_t);
+    // model = glm::scale(model, glm::vec3(0.3f, 0.3f, 0.3f) * clamp_t);
     
     glm::mat4 normalM;
     normalM = glm::transpose(glm::inverse(model));
