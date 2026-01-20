@@ -2720,6 +2720,49 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
     if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS) {
         cameraPos += -glm::cross(cameraFront, cameraUp) * cameraSpeed;
     }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS) {
+        cameraPos += cameraUp * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS) {
+        cameraPos += -cameraUp * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS) {
+        cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+        yaw = -90.0f;
+        pitch = 0.0f;
+        fov = 45.0f;
+        cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
+        fov += 30.0f * deltaTime;
+        if (fov > 90.0f) {
+            fov = 90.0f;
+        }
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
+        fov -= 30.0f * deltaTime;
+        if (fov < 1.0f) {
+            fov = 1.0f;
+        }
+    }
+    
+    if (glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
+    }
+
 }
 
 /*****************************************************************************/
