@@ -21,7 +21,7 @@ in vec3 objectColor;
 out vec4 fragmentColor;
 // uniform float is_border;
 
-uniform sampler2D texture_file;
+uniform sampler2D texture_file_instanced;
 // uniform sampler2D woodTex;
 // uniform sampler2D goldTex;
 
@@ -34,7 +34,7 @@ void main()
     vec3 lightPosition = vec3(10.0f, 5.0f, 5.0f);
     vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
 
-    vec4 texelColor = texture(texture_file, shaderTexCoord);
+    vec4 texelColor = texture(texture_file_instanced, shaderTexCoord);
 
     vec3 objectColor = texelColor.xyz;
 

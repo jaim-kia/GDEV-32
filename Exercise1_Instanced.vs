@@ -11,7 +11,7 @@ layout (location = 0) in vec3 vertexPosition;
 layout (location = 1) in vec2 textureCoord;
 layout (location = 2) in vec3 norm;
 layout (location = 3) in vec3 vertexColor;
-layout (location = 4) in mat4 instanceMatrix;;
+layout (location = 4) in mat4 instanceMatrix;
 
 out vec3 worldSpacePosition;
 out vec2 shaderTexCoord;
@@ -25,8 +25,8 @@ void main()
 {
     worldSpacePosition = (model * vec4(vertexPosition, 1.0f)).xyz;
 
-    // gl_Position = projview * instanceMatrix * vec4(worldSpacePosition, 1.0f);
-    gl_Position = projview * vec4(worldSpacePosition, 1.0f);
+    gl_Position = projview * instanceMatrix * vec4(worldSpacePosition, 1.0f);
+    // gl_Position = projview * vec4(worldSpacePosition, 1.0f);
 
     shaderTexCoord = textureCoord;
     worldSpaceNorm = (model * vec4(norm, 0.0f)).xyz;

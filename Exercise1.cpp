@@ -36,7 +36,6 @@ float lastX = WINDOW_WIDTH/2.0f;
 float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
-GLuint texture;
 
 // position, texture coords, normal, color
 float vertices[] = {
@@ -42197,7 +42196,7 @@ float vertices3[] = {
 
 
 // number of instances models
-unsigned int no0 = 100; // vertices *has to be perfect square
+unsigned int no0 = 1000; // vertices *has to be perfect square
 unsigned int no1 = 0; // vertices1 
 unsigned int no2 = 0; // vertices2
 unsigned int no3 = 0; // vertices3
@@ -42207,18 +42206,16 @@ unsigned int no3 = 0; // vertices3
 GLuint vao;         // vertex array object (stores the render state for our vertex array)
 GLuint vbo;         // vertex buffer object (reserves GPU memory for our vertex array)
 GLuint shader;      // combined vertex and fragment shader
+GLuint texture;
+
+GLuint instancedVao;
+GLuint instancedVbo;
+GLuint instancedShader;
+GLuint instancedTexture;
 
 void generateRandomPositions(glm::mat4* array, int count) {
-    // for (int i = 0; i < count; i++) {
-    //     float x = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
-    //     float y = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
-    //     float z = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f;
-    //     array[i] = glm::vec3(x, y, z);
-    // }
-    // glm::mat4 *modelMatrices;
-    // modelMatrices = new glm::mat4[count];
     srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
-    float radius = 5.0;
+    float radius = 8.0f;
     float offset = 2.5f;
     for (int i = 0; i < count; i++)
     {
@@ -42260,7 +42257,7 @@ bool setup()
 
     // upload our vertex array data to the newly-created VBO
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices2), vertices2, GL_STATIC_DRAW);
 
     // on the VAO, register the current VBO with the following vertex attribute layout:
     // - layout location 0...
@@ -42280,7 +42277,7 @@ bool setup()
     glEnableVertexAttribArray(3);
 
     // loading textures
-    texture = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
+    texture = gdevLoadTexture("Texture-TrainStation.png", GL_REPEAT, true, true);
     if (! texture) return false;
 
     // load our shader program
@@ -42288,48 +42285,50 @@ bool setup()
     if (! shader)
         return false;
 
+    //------------- Instanced VAO stuff ------------------------
+    glGenVertexArrays(1, &instancedVao);
+    glGenBuffers(1, &instancedVbo);
+    
+    // bind the newly-created VAO to make it the current one that OpenGL will apply state changes to
+    glBindVertexArray(instancedVao);
+
+    // upload our vertex array data to the newly-created VBO
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);                     // position
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));   // texture coord
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));   // normal
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));   // color
+    // enable the newly-created layout location 0;
+    // this shall be used by our vertex shader to read the vertex's x, y, and z
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+
+    instancedTexture = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
+    if (! instancedTexture) return false;
+
+    // load our shader program
+    instancedShader = gdevLoadShader("Exercise1_Instanced.vs", "Exercise1_Instanced.fs");
+    if (! instancedShader)
+        return false;
+
+    //--------------------------------------------------------
+
     // making offsets for instanced rendering
     glm::mat4 translationMatrices[no0];
     
     // random positions and rotations
     generateRandomPositions(translationMatrices, no0);
     
-    // int index = 0;
-    // float offset = 3.0f;
-    // for (int z = -std::sqrt(no0)/2; z < std::sqrt(no0)/2; z++)
-    // {
-    //     for (int x = -std::sqrt(no0)/2; x < std::sqrt(no0)/2; x++)
-    //     {
-    //         glm::vec3 translation;
-    //         translation.x = (float)x / 2.0f * offset;
-    //         translation.y = -0.5f;
-    //         translation.z = (float)z / 2.0f * offset;
-    //         translations[index++] = translation;
-    //     }
-    // }
-
-    // store instanced data in a vertex buffer object
-    // GLuint vboInstanced;
-    // glGenBuffers(1, &vboInstanced);
-    // glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * no0, &translationMatrices[0], GL_STATIC_DRAW);
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-
-    // glEnableVertexAttribArray(4);
-    // glBindBuffer(GL_ARRAY_BUFFER, vboInstanced);
-
-    // glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glVertexAttribDivisor(4, 1); // tell OpenGL this is an instanced vertex attribute.
-
-    GLuint buffer;
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    GLuint instancedVboMatrix;
+    glGenBuffers(1, &instancedVboMatrix);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
     glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * no0, &translationMatrices[0], GL_STATIC_DRAW);
     
-    GLuint VAO = vao;
-    glBindVertexArray(VAO);
+    GLuint instancedVaoMatrix = instancedVao;
+    glBindVertexArray(instancedVaoMatrix);
 
     std::size_t vec4Size = sizeof(glm::vec4);
     glEnableVertexAttribArray(4);
@@ -42383,10 +42382,10 @@ void render()
     projview *= glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);;
     
     glm::mat4 model(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, -0.5f, 0.0f));
-    model = glm::rotate(model, glm::radians(t * rot_speed),
-                                glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)));
-    model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f) * clamp_t);
+    model = glm::translate(model, glm::vec3(0.0f, -2.5f, -2.0f));
+    // model = glm::rotate(model, glm::radians(t * rot_speed),
+    //                             glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)));
+    model = glm::scale(model, glm::vec3(0.5f, 0.5f, 0.5f) * clamp_t);
     // model = glm::scale(model, glm::vec3(0.3f, 0.3f, 0.3f) * clamp_t);
     
     glm::mat4 normalM;
@@ -42412,9 +42411,34 @@ void render()
     
     // ... draw our triangles
     glBindVertexArray(vao);
-    // glDrawArrays(GL_TRIANGLES, 0, (sizeof(vertices)) / (11 * sizeof(float)));
+    glDrawArrays(GL_TRIANGLES, 0, (sizeof(vertices2)) / (11 * sizeof(float)));
+
+    //------------- Instanced Rendering ------------------------
+    glUseProgram(instancedShader);
+    // glEnable(GL_CULL_FACE);
+    // glEnable(GL_DEPTH_TEST);
+    // model = glm::scale(model, glm::vec3(5.0f, 5.0f, 5.0f) * clamp_t);
+    model = glm::rotate(model, glm::radians(t * rot_speed),
+                                glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)));
+        
+    glUniformMatrix4fv(glGetUniformLocation(instancedShader, "projview"),
+                        1, GL_FALSE, glm::value_ptr(projview));
+    
+
+    glUniformMatrix4fv(glGetUniformLocation(instancedShader, "model"),
+                        1, GL_FALSE, glm::value_ptr(model));
+
+    glUniformMatrix4fv(glGetUniformLocation(instancedShader, "normalM"),
+                        1, GL_FALSE, glm::value_ptr(normalM));    
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, instancedTexture);
+
+    glUniform1i(glGetUniformLocation(instancedShader, "texture_file_instanced"), 1);
+
+    glBindVertexArray(instancedVao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, (sizeof(vertices)) / (11 * sizeof(float)), no0);
 
+    
 }
 
 
