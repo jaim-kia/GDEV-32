@@ -2710,7 +2710,7 @@ bool setup()
     if (! instancedTexture) return false;
 
     // load our shader program
-    instancedShader = gdevLoadShader("Exercise1_Instanced.vs", "Exercise1_Instanced.fs");
+    instancedShader = gdevLoadShader("Exercise1_fish.vs", "Exercise1_fish.fs");
     if (! instancedShader)
         return false;
 
