@@ -2490,15 +2490,15 @@ GLuint instancedVboMatrix;
 const int NUM_FISH = 500;
 const int DT = 16; // milliseconds per frame (~60 FPS)
 const float TURN_RATE = 0.1f; // radians per frame
-const int MAX_SPEED = 60;
+const int MAX_SPEED = 40;
 const int MIN_SPEED = 20;
 
 const float AVOID_RADIUS = 0.6f;
 const float AVOID_WEIGHT = 0.8f;
 const float FLOW_WEIGHT = 1.0f;
 
-const glm::vec3 TANK_MIN(-2.0f);
-const glm::vec3 TANK_MAX(2.0f);
+const glm::vec3 TANK_MIN(-10.0f);
+const glm::vec3 TANK_MAX(10.0f);
 
 float tankVertices[] = {
     // positions          // texture coords  // normals         // colors
@@ -2583,7 +2583,7 @@ void initFish() {
             static_cast<float>(rand() % 2000) / 1000.0f - 1.0f
         ));
         f.speed = static_cast<float>(((rand() % (MAX_SPEED - MIN_SPEED + 1)) + MIN_SPEED) / 1000.0f);
-        std::cout << f.speed << std::endl;
+        // std::cout << f.speed << std::endl;
         f.radius = 0.15f;
         f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); 
     }    
@@ -2609,6 +2609,21 @@ glm::vec3 avoidNeighbors(const Fish& fish, const std::vector<Fish>& fishes) {
         }
     }
     return avoidance;
+}
+
+glm::vec3 avoidWalls(const Fish& f) {
+    glm::vec3 a(0.0f);
+    float margin = 0.5f;
+    
+    glm::vec3 pos = f.position;
+    if (pos.x > TANK_MAX.x - margin) a.x -= 1.0f;
+    if (pos.x < TANK_MIN.x + margin) a.x += 1.0f;
+    if (pos.y > TANK_MAX.y - margin) a.y -= 1.0f;
+    if (pos.y < TANK_MIN.y + margin) a.y += 1.0f;
+    if (pos.z > TANK_MAX.z - margin) a.z -= 1.0f;
+    if (pos.z < TANK_MIN.z - margin) a.z += 1.0f;
+
+    return a;
 }
 
 void generateRandomPositions(glm::mat4* array, int count) {
@@ -2655,7 +2670,7 @@ bool setup()
 
     // upload our vertex array data to the newly-created VBO
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(tankVertices), tankVertices, GL_STATIC_DRAW);
 
     // on the VAO, register the current VBO with the following vertex attribute layout:
     // - layout location 0...
@@ -2793,7 +2808,7 @@ void render()
     
     // ... draw our triangles
     glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, (sizeof(vertices)) / (11 * sizeof(float)));
+    glDrawArrays(GL_TRIANGLES, 0, (sizeof(tankVertices)) / (11 * sizeof(float)));
 
     //------------- Instanced Rendering ------------------------
     // compute stuff lol
@@ -2802,9 +2817,9 @@ void render()
 
         glm::vec3 flow = flowField(f.position, static_cast<float>(glfwGetTime()));
         glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
-        // wall 
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
 
-        glm::vec3 desiredVelocity = glm::normalize(flow * FLOW_WEIGHT + avoid);
+        glm::vec3 desiredVelocity = glm::normalize(flow * FLOW_WEIGHT + avoid + wall);
         f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning
         f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time
         f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient 
