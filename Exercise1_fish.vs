@@ -23,13 +23,12 @@ uniform mat4 model;
 
 void main()
 {
-    worldSpacePosition = (model * vec4(vertexPosition, 1.0f)).xyz;
-
-    gl_Position = projview * instanceMatrix * vec4(worldSpacePosition, 1.0f);
-    // gl_Position = projview * vec4(worldSpacePosition, 1.0f);
+    vec4 worldPos = instanceMatrix * vec4(vertexPosition, 1.0f);
+    worldSpacePosition = worldPos.xyz;
+    gl_Position = projview * worldPos;
 
     shaderTexCoord = textureCoord;
-    worldSpaceNorm = (model * vec4(norm, 0.0f)).xyz;
+    worldSpaceNorm = mat3(transpose(inverse(instanceMatrix))) * norm;
     objectColor = vertexColor;
 }
 
