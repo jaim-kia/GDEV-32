@@ -113,6 +113,7 @@ GLuint texture_train;
 GLuint texture_rainbow;
 GLuint texture_fish;
 GLuint texture_water;
+GLuint texture_disp_smoke;
 
 GLuint instancedVao;
 GLuint instancedVbo;
@@ -317,8 +318,11 @@ bool setup()
     texture_rainbow = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
     if (! texture_rainbow) return false;
 
-    texture_water = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
+    texture_water = gdevLoadTexture("tex-water-2.png", GL_REPEAT, true, true);
     if (! texture_water) return false;
+
+    texture_disp_smoke = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
+    if (! texture_disp_smoke) return false;
 
     // load our shader program
     shader = gdevLoadShader("Exercise1.vs", "Exercise1.fs");
@@ -393,12 +397,14 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
+    float t = glfwGetTime();
     // clear the whole frame
     glClearColor(0.529f, 0.808f, 0.922f, 1.0f); // ghibli sky blue
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // using our shader program...
     glUseProgram(shader);
+    glUniform1f(glGetUniformLocation(shader, "time"), t);
     glEnable(GL_CULL_FACE); 
     glEnable(GL_DEPTH_TEST); // enable OpenGL's hidden surface removal
     glm::mat4 projview;
@@ -451,6 +457,10 @@ void render()
 
     glBindVertexArray(vaos[2]); // rainbow
     glDrawArrays(GL_TRIANGLES, 0, (rainbow.size() * sizeof(float)) / (11 * sizeof(float)));
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture_disp_smoke);
+    glUniform1i(glGetUniformLocation(shader, "shaderTextureSmoke"), 1);
 
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));

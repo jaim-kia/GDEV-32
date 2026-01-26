@@ -23,6 +23,8 @@ out vec4 fragmentColor;
 
 uniform sampler2D texture_file;
 uniform bool isTile;
+uniform float time;
+uniform sampler2D shaderTextureSmoke;
 // uniform sampler2D woodTex;
 // uniform sampler2D goldTex;
 
@@ -35,7 +37,10 @@ void main()
     vec3 lightPosition = vec3(10.0f, 5.0f, 5.0f);
     vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
 
-    vec2 finalUV = isTile ? (worldSpacePosition.xz * 0.2) : shaderTexCoord;
+    vec4 dispMapBG = texture(shaderTextureSmoke, shaderTexCoord + vec2(time*0.01, -time*0.01));
+
+    vec2 finalUV = isTile ? ((worldSpacePosition.xz * 0.2) + vec2(dispMapBG.r-0.5, dispMapBG.r-0.5) + vec2(time*0.01, -time*0.01)) : shaderTexCoord;
+    // vec2 finalUV = isTile ? ((worldSpacePosition.xz * 0.2) + vec2(time*0.1, -time*0.1)) : shaderTexCoord;
     vec4 texelColor = texture(texture_file, finalUV);
 
     vec3 objectColor = texelColor.xyz;
