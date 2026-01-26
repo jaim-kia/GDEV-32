@@ -22,6 +22,7 @@ out vec4 fragmentColor;
 // uniform float is_border;
 
 uniform sampler2D texture_file;
+uniform bool isTile;
 // uniform sampler2D woodTex;
 // uniform sampler2D goldTex;
 
@@ -34,7 +35,8 @@ void main()
     vec3 lightPosition = vec3(10.0f, 5.0f, 5.0f);
     vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
 
-    vec4 texelColor = texture(texture_file, shaderTexCoord);
+    vec2 finalUV = isTile ? (worldSpacePosition.xz * 0.2) : shaderTexCoord;
+    vec4 texelColor = texture(texture_file, finalUV);
 
     vec3 objectColor = texelColor.xyz;
 

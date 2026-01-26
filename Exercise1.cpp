@@ -64,6 +64,7 @@ std::vector<float> train = {};
 std::vector<float> rainbow = {};
 std::vector<float> fish = {};
 std::vector<float> cloud = {};
+std::vector<float> water = {};
 
 void readModelData(std::vector<float> &array, const char* filename) {
     std::ifstream file(filename);
@@ -97,20 +98,21 @@ void readModelData(std::vector<float> &array, const char* filename) {
 // define OpenGL object IDs to represent the vertex array and the shader program in the GPU
 // GLuint vao_station, vao_train;         // vertex array object (stores the render state for our vertex array)
 // GLuint vbo_station, vbo_train;         // vertex buffer object (reserves GPU memory for our vertex array)
-int vertex_data_num =  3;
-GLuint vaos[3], vbos[3];
+int vertex_data_num =  4;
+GLuint vaos[4], vbos[4];
 // void* vertex_data[] = { vertices2, vertices3, fish_data };
 // float* vertex_data[3];
-std::vector<float> vertex_data[3];
+std::vector<float> vertex_data[4];
 // int vertex_data_num =  sizeof(vertex_data) / sizeof(vertex_data[0]);
 // size_t data_sizes[] = { sizeof(vertices2), sizeof(vertices3), sizeof(fish_data) };
-size_t data_sizes[3];
+size_t data_sizes[4];
 
 GLuint shader;      // combined vertex and fragment shader
 GLuint texture_station;
 GLuint texture_train;
 GLuint texture_rainbow;
 GLuint texture_fish;
+GLuint texture_water;
 
 GLuint instancedVao;
 GLuint instancedVbo;
@@ -266,6 +268,7 @@ bool setup()
     readModelData(train, "train_data.txt");
     readModelData(rainbow, "rainbow_data.txt");
     readModelData(fish, "fish_data.txt");
+    readModelData(water, "water_data.txt");
     // std::cout << "station size: " << station.size() << std::endl;
     // std::cout << "train size: " << train.size() << std::endl;
     // std::cout << "rainbow size: " << rainbow.size() << std::endl;
@@ -276,6 +279,7 @@ bool setup()
     vertex_data[0] = station;
     vertex_data[1] = train;
     vertex_data[2] = rainbow;
+    vertex_data[3] = water;
     // vertex_data[2] = fish;
     // std::cout << vertex_data[0].data() << std::endl;
 
@@ -312,6 +316,9 @@ bool setup()
 
     texture_rainbow = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
     if (! texture_rainbow) return false;
+
+    texture_water = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
+    if (! texture_water) return false;
 
     // load our shader program
     shader = gdevLoadShader("Exercise1.vs", "Exercise1.fs");
@@ -444,6 +451,23 @@ void render()
 
     glBindVertexArray(vaos[2]); // rainbow
     glDrawArrays(GL_TRIANGLES, 0, (rainbow.size() * sizeof(float)) / (11 * sizeof(float)));
+
+    glm::mat4 floorModel = glm::mat4(1.0f);
+    floorModel = glm::translate(floorModel, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
+    floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
+
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 1);
+    glUniform2f(glGetUniformLocation(shader, "cameraPlanePos"), cameraPos.x, cameraPos.z);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture_water);
+    glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
+
+    glBindVertexArray(vaos[3]); // water
+    glDrawArrays(GL_TRIANGLES, 0, (water.size() * sizeof(float)) / (11 * sizeof(float)));
+
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
     // tank
     // glBindVertexArray(vao);
