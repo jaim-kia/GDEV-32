@@ -288,10 +288,6 @@ bool setup()
     //     // fish_data[i] = fish[i];
     //     std::cout << station[i] << ", ";
     // }
-    vertex_data[0] = station;
-    vertex_data[1] = train;
-    vertex_data[2] = rainbow;
-
     // vertex_data[2] = fish;
     // std::cout << vertex_data[0].data() << std::endl;
 
@@ -486,7 +482,7 @@ void render()
     glBindTexture(GL_TEXTURE_2D, texture_water);
     glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
 
-    glBindVertexArray(vaos[3]); // water
+    glBindVertexArray(vaos[4]); // water
     glDrawArrays(GL_TRIANGLES, 0, (water.size() * sizeof(float)) / (11 * sizeof(float)));
     
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
