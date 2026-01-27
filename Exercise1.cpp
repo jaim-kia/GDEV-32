@@ -331,7 +331,7 @@ bool setup()
     texture_disp_smoke = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
     if (! texture_disp_smoke) return false;
 
-    texture_skybox = gdevLoadTexture("tex-skybox.png", GL_REPEAT, true, true);
+    texture_skybox = gdevLoadTexture("tex-skybox-2.png", GL_REPEAT, true, true);
     if (! texture_disp_smoke) return false;
 
     // load our shader program
@@ -456,8 +456,8 @@ void render()
     glBindVertexArray(vaos[1]); // train
     glDrawArrays(GL_TRIANGLES, 0, (train.size() * sizeof(float)) / (11 * sizeof(float)));
 
-    glBindVertexArray(vaos[3]); // tank
-    glDrawArrays(GL_TRIANGLES, 0, (sizeof(tankVertices)) / (11 * sizeof(float)));
+    // glBindVertexArray(vaos[3]); // tank
+    // glDrawArrays(GL_TRIANGLES, 0, (sizeof(tankVertices)) / (11 * sizeof(float)));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_rainbow);
@@ -469,6 +469,19 @@ void render()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture_disp_smoke);
     glUniform1i(glGetUniformLocation(shader, "shaderTextureSmoke"), 1);
+
+    glm::mat4 skyModel = glm::mat4(1.0f);
+    skyModel = glm::translate(skyModel, glm::vec3(cameraPos.x, cameraPos.y, cameraPos.z));
+    skyModel = glm::scale(skyModel, glm::vec3(1.0f, 1.0f, 1.0f));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(skyModel));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture_skybox);
+    glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
+
+    glBindVertexArray(vaos[5]); // skybox
+    glDrawArrays(GL_TRIANGLES, 0, (skybox.size() * sizeof(float)) / (11 * sizeof(float)));
+
 
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
@@ -487,16 +500,6 @@ void render()
     
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-    // glm::mat4 skyModel = glm::mat4(1.0f);
-    // skyModel = glm::translate(skyModel, glm::vec3(cameraPos.x, cameraPos.y, cameraPos.z));
-    // skyModel = glm::scale(skyModel, glm::vec3(5.0f, 1.0f, 5.0f));
-
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture_skybox);
-    // glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
-
-    // glBindVertexArray(vaos[4]); // water
-    // glDrawArrays(GL_TRIANGLES, 0, (skybox.size() * sizeof(float)) / (11 * sizeof(float)));
 
     // tank
     // glBindVertexArray(vao);
