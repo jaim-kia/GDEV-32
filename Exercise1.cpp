@@ -41,24 +41,6 @@ float lastX = WINDOW_WIDTH/2.0f;
 float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
-// position, texture coords, normal, color
-float vertices[] = { // rainbow
-    
-
-};
-float vertices2[] = { // station
-    
-    
-    
-
-};
-float vertices3[] = { // train
-    
-};
-float fish_data[] = { // fish model
-    
-};
-
 std::vector<float> station = {};
 std::vector<float> train = {};
 std::vector<float> rainbow = {};
@@ -76,21 +58,13 @@ void readModelData(std::vector<float> &array, const char* filename) {
 
     std::string line;
     while (std::getline(file, line)) {
-        // array.push_back(value);
-        // std::cout << line << std::endl;
         std::string value;
         std::istringstream tokenizer(line);
-        // std::getline(tokenizer, value, ',');
         while (std::getline(tokenizer, value, ',')) {
-            // array.push_back(std::stof(value));
-            // std::cout << value << "\n";
             try {
-                // array.push_back(std::stof(value));
-                // std::cout << "float: " << std::stof(value) << "\n";
                 array.push_back(std::stof(value));
             } catch (const std::invalid_argument& e) {
                 // skip
-                // std::cerr << "Invalid float value: " << value << std::endl;
             }
         }
     }
@@ -99,14 +73,10 @@ void readModelData(std::vector<float> &array, const char* filename) {
 // define OpenGL object IDs to represent the vertex array and the shader program in the GPU
 // GLuint vao_station, vao_train;         // vertex array object (stores the render state for our vertex array)
 // GLuint vbo_station, vbo_train;         // vertex buffer object (reserves GPU memory for our vertex array)
-int vertex_data_num =  5;
-GLuint vaos[5], vbos[5];
-// void* vertex_data[] = { vertices2, vertices3, fish_data };
-// float* vertex_data[3];
-std::vector<float> vertex_data[5];
-// int vertex_data_num =  sizeof(vertex_data) / sizeof(vertex_data[0]);
-// size_t data_sizes[] = { sizeof(vertices2), sizeof(vertices3), sizeof(fish_data) };
-size_t data_sizes[5];
+int vertex_data_num =  6;
+GLuint vaos[6], vbos[6];
+std::vector<float> vertex_data[6];
+size_t data_sizes[6];
 
 GLuint shader;      // combined vertex and fragment shader
 GLuint texture_station;
@@ -124,18 +94,19 @@ GLuint instancedTexture;
 GLuint instancedVboMatrix;
 
 // fish parameters
-const int NUM_FISH = 20;
+const int NUM_FISH = 200;
 const int DT = 16; // milliseconds per frame (~60 FPS)
 const float TURN_RATE = 0.1f; // radians per frame
-const int MAX_SPEED = 40;
+const int MAX_SPEED = 30;
 const int MIN_SPEED = 20;
 
-const float AVOID_RADIUS = 0.6f;
+const float AVOID_RADIUS = 0.4f;
 const float AVOID_WEIGHT = 0.8f;
 const float FLOW_WEIGHT = 1.0f;
 
-const glm::vec3 TANK_MIN(-10.0f);
-const glm::vec3 TANK_MAX(10.0f);
+const glm::vec3 WORLD_UP(0.0f, 1.0f, 0.0f);
+const glm::vec3 TANK_MIN(-20.0f);
+const glm::vec3 TANK_MAX(20.0f);
 
 float tankVertices[] = {
     // positions          // texture coords  // normals         // colors
@@ -195,8 +166,6 @@ struct Fish {
 
 std::vector<Fish> fishes(NUM_FISH);
 std::vector<glm::mat4> fishMatrices(NUM_FISH);
-// glm::mat4 fishMatrices[NUM_FISH];
-
 
 void initFish() {
     float radius = 8.0f;
@@ -263,6 +232,37 @@ glm::vec3 avoidWalls(const Fish& f) {
     return a;
 }
 
+void computeNextFishStates(float time) {
+    for (auto& f : fishes) {
+        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
+        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+
+        // glm::vec3 desiredVelocity = glm::normalize(flow * FLOW_WEIGHT + avoid + wall);
+        glm::vec3 steering = flow + avoid + wall;
+        // glm::vec3 desiredVelocity = glm::normalize(steering);
+
+        glm::vec3 desiredDir = glm::normalize(steering);  
+        glm::vec3 currentDir = glm::normalize(f.velocity);
+        glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
+
+        // new basis
+        glm::vec3 forward = newDir;
+        glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
+        glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        glm::mat3 rotationMatrix(right, up, forward);
+        f.orientation = glm::quat_cast(rotationMatrix);
+
+        f.velocity = forward;
+        f.position += f.velocity * f.speed * (DT / 16.0f);
+
+        // f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning
+        // f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time
+        // f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient 
+    }
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -273,6 +273,14 @@ bool setup()
     readModelData(fish, "fish_data.txt");
     readModelData(water, "water_data.txt");
     readModelData(skybox, "skybox_data.txt");
+  
+    vertex_data[0] = station;
+    vertex_data[1] = train;
+    vertex_data[2] = rainbow;
+    vertex_data[3] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
+    vertex_data[4] = water;
+    vertex_data[5] = skybox;
+  
     // std::cout << "station size: " << station.size() << std::endl;
     // std::cout << "train size: " << train.size() << std::endl;
     // std::cout << "rainbow size: " << rainbow.size() << std::endl;
@@ -283,8 +291,7 @@ bool setup()
     vertex_data[0] = station;
     vertex_data[1] = train;
     vertex_data[2] = rainbow;
-    vertex_data[3] = water;
-    vertex_data[4] = skybox;
+
     // vertex_data[2] = fish;
     // std::cout << vertex_data[0].data() << std::endl;
 
@@ -425,9 +432,6 @@ void render()
     
     glm::mat4 model(1.0f);
     model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // to 0,0,0
-    // model = glm::rotate(model, glm::radians(t * rot_speed),
-    //                             glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)));
-    // model = glm::scale(model, glm::vec3(0.5f, 0.5f, 0.5f));
 
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "projview"),
@@ -436,9 +440,7 @@ void render()
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "model"),
                         1, GL_FALSE, glm::value_ptr(model));
-
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "normalM"),
-    //                     1, GL_FALSE, glm::value_ptr(normalM));    
+ 
 
     // set the active texture
     glActiveTexture(GL_TEXTURE0);
@@ -454,9 +456,12 @@ void render()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_train);
     glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
-
+    
     glBindVertexArray(vaos[1]); // train
     glDrawArrays(GL_TRIANGLES, 0, (train.size() * sizeof(float)) / (11 * sizeof(float)));
+
+    glBindVertexArray(vaos[3]); // tank
+    glDrawArrays(GL_TRIANGLES, 0, (sizeof(tankVertices)) / (11 * sizeof(float)));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_rainbow);
@@ -503,19 +508,22 @@ void render()
 
     //------------- Instanced Rendering ------------------------
     // compute stuff lol
-    for (int i = 0; i < NUM_FISH; i++) {
-        Fish& f = fishes[i];
+    
+    // for (int i = 0; i < NUM_FISH; i++) {
+    //     Fish& f = fishes[i];
 
-        glm::vec3 flow = flowField(f.position, static_cast<float>(glfwGetTime()));
-        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
-        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+    //     glm::vec3 flow = flowField(f.position, static_cast<float>(glfwGetTime()));
+    //     glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+    //     glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
 
-        glm::vec3 desiredVelocity = glm::normalize(flow * FLOW_WEIGHT + avoid + wall);
-        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning
-        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time
-        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient 
+    //     glm::vec3 desiredVelocity = glm::normalize(flow * FLOW_WEIGHT + avoid + wall);
+    //     f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning
+    //     f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time
+    //     f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient 
 
-    }
+    // }
+
+    computeNextFishStates(static_cast<float>(glfwGetTime()));
     
     // update fish matrices
     for (int i = 0; i < NUM_FISH; i++) {
@@ -523,19 +531,11 @@ void render()
         glm::mat4 m = glm::mat4(1.0f);
 
         m = glm::translate(m, f.position);
-        // m *= glm::mat4_cast(f.orientation);
+        m *= glm::mat4_cast(f.orientation);
         // m = glm::scale(m, glm::vec3(1.0f));
         fishMatrices[i] = m;
         
     }
-
-    // for (const auto& mat : fishMatrices) {
-    //     const float* data = glm::value_ptr(mat);
-    //     std::cout << "Matrix:" << std::endl;
-    //     for (int i = 0; i < 4; ++i) {
-    //         std::cout << data[i * 4 + 0] << " " << data[i * 4 + 1] << " " << data[i * 4 + 2] << " " << data[i * 4 + 3] << std::endl;
-    //     }
-    // }
 
     // update instance matrix buffer
     glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
@@ -545,13 +545,7 @@ void render()
 
     glUniformMatrix4fv(glGetUniformLocation(instancedShader, "projview"),
                         1, GL_FALSE, glm::value_ptr(projview));
-
-    // glUniformMatrix4fv(glGetUniformLocation(instancedShader, "model"),
-    //                     1, GL_FALSE, glm::value_ptr(model));
-
-    // glUniformMatrix4fv(glGetUniformLocation(instancedShader, "normalM"),
-    //                     1, GL_FALSE, glm::value_ptr(normalM));    
-
+ 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture_fish);
 
