@@ -64,6 +64,8 @@ std::vector<float> train = {};
 std::vector<float> rainbow = {};
 std::vector<float> fish = {};
 std::vector<float> cloud = {};
+std::vector<float> water = {};
+std::vector<float> skybox = {};
 
 void readModelData(std::vector<float> &array, const char* filename) {
     std::ifstream file(filename);
@@ -97,20 +99,23 @@ void readModelData(std::vector<float> &array, const char* filename) {
 // define OpenGL object IDs to represent the vertex array and the shader program in the GPU
 // GLuint vao_station, vao_train;         // vertex array object (stores the render state for our vertex array)
 // GLuint vbo_station, vbo_train;         // vertex buffer object (reserves GPU memory for our vertex array)
-int vertex_data_num =  3;
-GLuint vaos[3], vbos[3];
+int vertex_data_num =  5;
+GLuint vaos[5], vbos[5];
 // void* vertex_data[] = { vertices2, vertices3, fish_data };
 // float* vertex_data[3];
-std::vector<float> vertex_data[3];
+std::vector<float> vertex_data[5];
 // int vertex_data_num =  sizeof(vertex_data) / sizeof(vertex_data[0]);
 // size_t data_sizes[] = { sizeof(vertices2), sizeof(vertices3), sizeof(fish_data) };
-size_t data_sizes[3];
+size_t data_sizes[5];
 
 GLuint shader;      // combined vertex and fragment shader
 GLuint texture_station;
 GLuint texture_train;
 GLuint texture_rainbow;
 GLuint texture_fish;
+GLuint texture_water;
+GLuint texture_disp_smoke;
+GLuint texture_skybox;
 
 GLuint instancedVao;
 GLuint instancedVbo;
@@ -266,6 +271,8 @@ bool setup()
     readModelData(train, "train_data.txt");
     readModelData(rainbow, "rainbow_data.txt");
     readModelData(fish, "fish_data.txt");
+    readModelData(water, "water_data.txt");
+    readModelData(skybox, "skybox_data.txt");
     // std::cout << "station size: " << station.size() << std::endl;
     // std::cout << "train size: " << train.size() << std::endl;
     // std::cout << "rainbow size: " << rainbow.size() << std::endl;
@@ -276,6 +283,8 @@ bool setup()
     vertex_data[0] = station;
     vertex_data[1] = train;
     vertex_data[2] = rainbow;
+    vertex_data[3] = water;
+    vertex_data[4] = skybox;
     // vertex_data[2] = fish;
     // std::cout << vertex_data[0].data() << std::endl;
 
@@ -312,6 +321,15 @@ bool setup()
 
     texture_rainbow = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
     if (! texture_rainbow) return false;
+
+    texture_water = gdevLoadTexture("tex-water-2.png", GL_REPEAT, true, true);
+    if (! texture_water) return false;
+
+    texture_disp_smoke = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
+    if (! texture_disp_smoke) return false;
+
+    texture_skybox = gdevLoadTexture("tex-skybox.png", GL_REPEAT, true, true);
+    if (! texture_disp_smoke) return false;
 
     // load our shader program
     shader = gdevLoadShader("Exercise1.vs", "Exercise1.fs");
@@ -386,12 +404,14 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
+    float t = glfwGetTime();
     // clear the whole frame
     glClearColor(0.529f, 0.808f, 0.922f, 1.0f); // ghibli sky blue
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // using our shader program...
     glUseProgram(shader);
+    glUniform1f(glGetUniformLocation(shader, "time"), t);
     glEnable(GL_CULL_FACE); 
     glEnable(GL_DEPTH_TEST); // enable OpenGL's hidden surface removal
     glm::mat4 projview;
@@ -444,6 +464,38 @@ void render()
 
     glBindVertexArray(vaos[2]); // rainbow
     glDrawArrays(GL_TRIANGLES, 0, (rainbow.size() * sizeof(float)) / (11 * sizeof(float)));
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture_disp_smoke);
+    glUniform1i(glGetUniformLocation(shader, "shaderTextureSmoke"), 1);
+
+    glm::mat4 floorModel = glm::mat4(1.0f);
+    floorModel = glm::translate(floorModel, glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
+    floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
+
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 1);
+    glUniform2f(glGetUniformLocation(shader, "cameraPlanePos"), cameraPos.x, cameraPos.z);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture_water);
+    glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
+
+    glBindVertexArray(vaos[3]); // water
+    glDrawArrays(GL_TRIANGLES, 0, (water.size() * sizeof(float)) / (11 * sizeof(float)));
+    
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+
+    // glm::mat4 skyModel = glm::mat4(1.0f);
+    // skyModel = glm::translate(skyModel, glm::vec3(cameraPos.x, cameraPos.y, cameraPos.z));
+    // skyModel = glm::scale(skyModel, glm::vec3(5.0f, 1.0f, 5.0f));
+
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture_skybox);
+    // glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
+
+    // glBindVertexArray(vaos[4]); // water
+    // glDrawArrays(GL_TRIANGLES, 0, (skybox.size() * sizeof(float)) / (11 * sizeof(float)));
 
     // tank
     // glBindVertexArray(vao);
