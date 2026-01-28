@@ -606,15 +606,11 @@ void render()
     glm::mat4 model(1.0f);
     // model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // to 0,0,0
 
-
     glUniformMatrix4fv(glGetUniformLocation(shader, "projview"),
                         1, GL_FALSE, glm::value_ptr(projview));
-    
-
     glUniformMatrix4fv(glGetUniformLocation(shader, "model"),
                         1, GL_FALSE, glm::value_ptr(model));
  
-
     // set the active texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_station);
@@ -635,6 +631,13 @@ void render()
 
     // glBindVertexArray(vaos[3]); // tank
     // glDrawArrays(GL_TRIANGLES, 0, (sizeof(tankVertices)) / (11 * sizeof(float)));
+
+    model = glm::translate(model, glm::vec3(0.0f, 0.0f, -50.0f)); // to 0,0,0
+    model = glm::scale(model, glm::vec3(80.0f, 80.0f, 80.0f)); // to 0,0,0
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projview"),
+                        1, GL_FALSE, glm::value_ptr(projview));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"),
+                        1, GL_FALSE, glm::value_ptr(model));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_rainbow);
