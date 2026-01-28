@@ -505,7 +505,7 @@ bool setup()
     texture_rainbow = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
     if (! texture_rainbow) return false;
 
-    texture_water = gdevLoadTexture("tex-water-2.png", GL_REPEAT, true, true);
+    texture_water = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
     if (! texture_water) return false;
 
     texture_disp_smoke = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
