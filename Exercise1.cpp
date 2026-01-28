@@ -496,13 +496,13 @@ bool setup()
     skyboxShader = gdevLoadShader("skybox.vs", "skybox.fs");
 
     // loading textures
-    texture_station = gdevLoadTexture("tex-merged-station.png", GL_REPEAT, true, true);
+    texture_station = gdevLoadTexture("tex-station.png", GL_REPEAT, true, true);
     if (! texture_station) return false;
 
-    texture_train = gdevLoadTexture("test-train.png", GL_REPEAT, true, true);
+    texture_train = gdevLoadTexture("tex-train.png", GL_REPEAT, true, true);
     if (! texture_train) return false;
 
-    texture_rainbow = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
+    texture_rainbow = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
     if (! texture_rainbow) return false;
 
     texture_water = gdevLoadTexture("tex-water-2.png", GL_REPEAT, true, true);
@@ -541,7 +541,7 @@ bool setup()
 
     // instancedTexture = gdevLoadTexture("rainbow.png", GL_REPEAT, true, true);
     // if (! instancedTexture) return false;
-    texture_fish = gdevLoadTexture("test-fish.png", GL_REPEAT, true, true);
+    texture_fish = gdevLoadTexture("tex-fish.png", GL_REPEAT, true, true);
     if (! texture_fish) return false;
 
     // load our shader program
