@@ -47,7 +47,6 @@ std::vector<float> rainbow = {};
 std::vector<float> fish = {};
 std::vector<float> cloud = {};
 std::vector<float> water = {};
-// std::vector<float> skybox = {};
 
 float skyboxVertices[] = {
     // positions          
@@ -459,7 +458,6 @@ bool setup()
     vertex_data[2] = rainbow;
     vertex_data[3] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
     vertex_data[4] = water;
-    vertex_data[5] = skybox;
 
     makeAABBs();
 
@@ -675,7 +673,7 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(skyboxShader, "view"), 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(glGetUniformLocation(skyboxShader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-    glBindVertexArray(skyboxVAO); // The VAO containing the 36 vertices above
+    glBindVertexArray(skyboxVAO);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, texture_skybox);
     glUniform1i(glGetUniformLocation(skyboxShader, "skybox"), 0);
