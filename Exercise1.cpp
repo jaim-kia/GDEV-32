@@ -47,7 +47,52 @@ std::vector<float> rainbow = {};
 std::vector<float> fish = {};
 std::vector<float> cloud = {};
 std::vector<float> water = {};
-std::vector<float> skybox = {};
+// std::vector<float> skybox = {};
+
+float skyboxVertices[] = {
+    // positions          
+    -1.0f,  1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+
+    -1.0f, -1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f,
+
+    -1.0f,  1.0f, -1.0f,
+    1.0f,  1.0f, -1.0f,
+    1.0f,  1.0f,  1.0f,
+    1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f,
+    -1.0f,  1.0f, -1.0f,
+
+    -1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+    1.0f, -1.0f, -1.0f,
+    1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f,
+    1.0f, -1.0f,  1.0f
+};
 
 void readModelData(std::vector<float> &array, const char* filename) {
     std::ifstream file(filename);
@@ -73,10 +118,13 @@ void readModelData(std::vector<float> &array, const char* filename) {
 // define OpenGL object IDs to represent the vertex array and the shader program in the GPU
 // GLuint vao_station, vao_train;         // vertex array object (stores the render state for our vertex array)
 // GLuint vbo_station, vbo_train;         // vertex buffer object (reserves GPU memory for our vertex array)
-int vertex_data_num =  6;
-GLuint vaos[6], vbos[6];
-std::vector<float> vertex_data[6];
-size_t data_sizes[6];
+int vertex_data_num =  5;
+GLuint vaos[5], vbos[5];
+std::vector<float> vertex_data[5];
+size_t data_sizes[5];
+
+GLuint skyboxVAO, skyboxVBO;
+GLuint skyboxShader;
 
 GLuint shader;      // combined vertex and fragment shader
 GLuint texture_station;
@@ -352,16 +400,59 @@ void computeNextFishStates1(float time) {
     }
 }
 
+GLuint gdevLoadCubemap(std::vector<std::string> faces)
+{
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    int width, height, nrChannels;
+    stbi_set_flip_vertically_on_load(false); 
+
+    for (unsigned int i = 0; i < faces.size(); i++)
+    {
+        unsigned char *data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+        if (data)
+        {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 
+                         0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+            stbi_image_free(data);
+        }
+        else
+        {
+            std::cout << "Failed to load texture: " << faces[i] << std::endl;
+            stbi_image_free(data);
+        }
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    return textureID;
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
 {
+    skyboxShader = gdevLoadShader("skybox.vs", "skybox.fs");
+    glGenVertexArrays(1, &skyboxVAO);
+    glGenBuffers(1, &skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+
     readModelData(station, "station_data.txt");
     readModelData(train, "train_data.txt");
     readModelData(rainbow, "rainbow_data.txt");
     readModelData(fish, "fish_data.txt");
     readModelData(water, "water_data.txt");
-    readModelData(skybox, "skybox_data.txt");
   
     vertex_data[0] = station;
     vertex_data[1] = train;
@@ -395,6 +486,17 @@ bool setup()
         glEnableVertexAttribArray(3);
     }
 
+    std::vector<std::string> skyboxFaces = {
+        "tex-skybox-right.jpg",  // +X
+        "tex-skybox-left.jpg",   // -X
+        "tex-skybox-top.jpg",    // +Y
+        "tex-skybox-bottom.jpg", // -Y
+        "tex-skybox-front.jpg",  // +Z
+        "tex-skybox-back.jpg"    // -Z
+    };
+    texture_skybox = gdevLoadCubemap(skyboxFaces);
+    skyboxShader = gdevLoadShader("skybox.vs", "skybox.fs");
+
     // loading textures
     texture_station = gdevLoadTexture("tex-merged-station.png", GL_REPEAT, true, true);
     if (! texture_station) return false;
@@ -409,9 +511,6 @@ bool setup()
     if (! texture_water) return false;
 
     texture_disp_smoke = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
-    if (! texture_disp_smoke) return false;
-
-    texture_skybox = gdevLoadTexture("tex-skybox.png", GL_REPEAT, true, true);
     if (! texture_disp_smoke) return false;
 
     // load our shader program
@@ -567,16 +666,24 @@ void render()
     
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-    // glm::mat4 skyModel = glm::mat4(1.0f);
-    // skyModel = glm::translate(skyModel, glm::vec3(cameraPos.x, cameraPos.y, cameraPos.z));
-    // skyModel = glm::scale(skyModel, glm::vec3(5.0f, 1.0f, 5.0f));
+    glDepthFunc(GL_LEQUAL);
+    glUseProgram(skyboxShader);
 
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture_skybox);
-    // glUniform1i(glGetUniformLocation(shader, "texture_file"), 0);
+    glm::mat4 view = glm::mat4(glm::mat3(glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp)));
+    glm::mat4 projection = glm::perspective(glm::radians(fov), (float)WINDOW_WIDTH/WINDOW_HEIGHT, 0.1f, 100.0f);
 
-    // glBindVertexArray(vaos[4]); // water
-    // glDrawArrays(GL_TRIANGLES, 0, (skybox.size() * sizeof(float)) / (11 * sizeof(float)));
+    glUniformMatrix4fv(glGetUniformLocation(skyboxShader, "view"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(glGetUniformLocation(skyboxShader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+    glBindVertexArray(skyboxVAO); // The VAO containing the 36 vertices above
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, texture_skybox);
+    glUniform1i(glGetUniformLocation(skyboxShader, "skybox"), 0);
+
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glBindVertexArray(0);
+    glDepthFunc(GL_LESS);
 
 
     // computeNextFishStates(static_cast<float>(glfwGetTime()));
