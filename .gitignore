@@ -43,3 +43,6 @@
 # helper files
 output.txt
 model_loader.py
+
+
+.vscode/
