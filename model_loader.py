@@ -93,6 +93,7 @@ def assemble_final_model():
     for face in faces:
         if len(face) == 3:
             for index in face:
+                # print(index)
                 vertex = []
                 for i in vertices[int(index[0]) - 1]:
                     vertex.append(i)  # vertex position
@@ -103,6 +104,7 @@ def assemble_final_model():
                 if len(index) > 2:
                     for k in vertex_normals[int(index[2]) - 1]:
                         vertex.append(k)  # vertex normal
+                # print("tuple(vertex): ", tuple(vertex))
                 final_vertices.append(tuple(vertex))
 
         elif len(face) == 4:
@@ -121,33 +123,61 @@ def assemble_final_model():
                         vertex.append(k)  # vertex normal
                 final_vertices.append(tuple(vertex))
 
+def compute_tangent_space():
+    for i in range(len(final_vertices) // 3):
+        v0 = final_vertices[i * 3]
+        v1 = final_vertices[i * 3 + 1]
+        v2 = final_vertices[i * 3 + 2]
 
-def output_final_model():
-    with open("output.txt", "w") as file:
+        # Compute the edges of the triangle
+        edge1 = (v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2])
+        edge2 = (v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2])
+
+        # Compute the delta UVs
+        deltaUV1 = (v1[6] - v0[6], v1[7] - v0[7])
+        deltaUV2 = (v2[6] - v0[6], v2[7] - v0[7])
+
+        f = 1.0 / (deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1])
+
+        tangent = (
+            f * (deltaUV2[1] * edge1[0] - deltaUV1[1] * edge2[0]),
+            f * (deltaUV2[1] * edge1[1] - deltaUV1[1] * edge2[1]),
+            f * (deltaUV2[1] * edge1[2] - deltaUV1[1] * edge2[2])
+        )
+
+        # Append the tangent to each vertex in the triangle
+        for j in range(3):
+            final_vertices[i * 3 + j] = list(final_vertices[i * 3 + j])
+
+def output_final_model(output_file):
+    with open(output_file, "w") as file:
         for v in final_vertices:
             for f in v:
                 file.write(f"{f}, ")
             # file.write("1.0, 1.0, 1.0, ") # normal
-            file.write("1.0, 1.0, 1.0, ") # color
+            # file.write("1.0, 1.0, 1.0, ") # color
             file.write("\n")
     
-    print(f"{len(final_vertices)} total vertices" )
+    print(f"{len(final_vertices)} total vertices. Output written to {output_file}")
 
 
-def main(file):
+def main(file, output_file="output.txt"):
     file_path = os.path.join(os.path.dirname(__file__), file)
     load_obj(file_path)
     print(f"Loaded {len(vertices)} vertices, {len(vertex_textures)} texture coordinates, {len(vertex_normals)} normals, and {len(faces)} faces.\n")
 
     assemble_final_model()
 
-    output_final_model()
+    output_final_model(output_file)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python model_loader.py <file>")
         sys.exit(1)
-    main(sys.argv[1])
+    elif len(sys.argv) == 2:
+        main(sys.argv[1])
+    elif len(sys.argv) == 3:
+        main(sys.argv[1], sys.argv[2])
 
 
