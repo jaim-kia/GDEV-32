@@ -1,6 +1,7 @@
 # 3d model loader for .obj files for OPENGL applications
 import os
 import sys
+import math
 
 # USAGE: python model_loader.py <file>.obj
 #
@@ -123,39 +124,91 @@ def assemble_final_model():
                         vertex.append(k)  # vertex normal
                 final_vertices.append(tuple(vertex))
 
+# tangent space calculation helper functions
+def vec3_sub(a, b):
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+def vec2_sub(a, b):
+    return (a[0] - b[0], a[1] - b[1])
+
+def vec3_dot(a, b):
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+
+def vec3_cross(a, b):
+    return (
+        a[1]*b[2] - a[2]*b[1],
+        a[2]*b[0] - a[0]*b[2],
+        a[0]*b[1] - a[1]*b[0]
+    )
+
+def vec3_scale(v, s):
+    return (v[0]*s, v[1]*s, v[2]*s)
+
+def vec3_add(a, b):
+    return (a[0]+b[0], a[1]+b[1], a[2]+b[2])
+
+def vec3_normalize(v):
+    length = math.sqrt(vec3_dot(v, v))
+    if length == 0:
+        return (0.0, 0.0, 0.0)
+    return (v[0]/length, v[1]/length, v[2]/length)
+
 def compute_tangent_space():
-    for i in range(len(final_vertices) // 3):
-        v0 = final_vertices[i * 3]
-        v1 = final_vertices[i * 3 + 1]
-        v2 = final_vertices[i * 3 + 2]
+    global final_vertices
 
-        # Compute the edges of the triangle
-        edge1 = (v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2])
-        edge2 = (v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2])
+    new_vertices = []
 
-        # Compute the delta UVs
-        deltaUV1 = (v1[6] - v0[6], v1[7] - v0[7])
-        deltaUV2 = (v2[6] - v0[6], v2[7] - v0[7])
+    for i in range(0, len(final_vertices), 3):
+        v0 = final_vertices[i]
+        v1 = final_vertices[i + 1]
+        v2 = final_vertices[i + 2]
 
-        f = 1.0 / (deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1])
+        p0 = v0[0:3]
+        uv0 = v0[3:5]
+        n0 = v0[5:8]
 
-        tangent = (
-            f * (deltaUV2[1] * edge1[0] - deltaUV1[1] * edge2[0]),
-            f * (deltaUV2[1] * edge1[1] - deltaUV1[1] * edge2[1]),
-            f * (deltaUV2[1] * edge1[2] - deltaUV1[1] * edge2[2])
-        )
+        p1 = v1[0:3]
+        uv1 = v1[3:5]
 
-        # Append the tangent to each vertex in the triangle
-        for j in range(3):
-            final_vertices[i * 3 + j] = list(final_vertices[i * 3 + j])
+        p2 = v2[0:3]
+        uv2 = v2[3:5]
+
+        edge1 = vec3_sub(p1, p0)
+        edge2 = vec3_sub(p2, p0)
+
+        deltaUV1 = vec2_sub(uv1, uv0)
+        deltaUV2 = vec2_sub(uv2, uv0)
+
+        denom = deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1]
+
+        if abs(denom) < 1e-8:
+            tangent = (0.0, 0.0, 0.0)
+        else:
+            f = 1.0 / denom
+
+            tangent = (
+                f * (deltaUV2[1] * edge1[0] - deltaUV1[1] * edge2[0]),
+                f * (deltaUV2[1] * edge1[1] - deltaUV1[1] * edge2[1]),
+                f * (deltaUV2[1] * edge1[2] - deltaUV1[1] * edge2[2])
+            )
+
+        n = vec3_normalize(n0)
+        t = vec3_sub(tangent, vec3_scale(n, vec3_dot(n, tangent)))
+        t = vec3_normalize(t)
+
+        new_vertices.append(v0 + t)
+        new_vertices.append(v1 + t)
+        new_vertices.append(v2 + t)
+
+    final_vertices = new_vertices
+
+
 
 def output_final_model(output_file):
     with open(output_file, "w") as file:
         for v in final_vertices:
             for f in v:
                 file.write(f"{f}, ")
-            # file.write("1.0, 1.0, 1.0, ") # normal
-            # file.write("1.0, 1.0, 1.0, ") # color
             file.write("\n")
     
     print(f"{len(final_vertices)} total vertices. Output written to {output_file}")
@@ -167,6 +220,7 @@ def main(file, output_file="output.txt"):
     print(f"Loaded {len(vertices)} vertices, {len(vertex_textures)} texture coordinates, {len(vertex_normals)} normals, and {len(faces)} faces.\n")
 
     assemble_final_model()
+    compute_tangent_space()
 
     output_final_model(output_file)
 
