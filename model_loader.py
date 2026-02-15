@@ -200,6 +200,7 @@ def compute_tangent_space():
         new_vertices.append(v1 + t)
         new_vertices.append(v2 + t)
 
+    # format final vertices to be 11 values long (pos(3), tex(2), normal(3), tangent(3))
     final_vertices = new_vertices
 
 
