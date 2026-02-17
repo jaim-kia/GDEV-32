@@ -40,7 +40,7 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
     vec3 lightDir = (-light.direction); // for directional light, the light direction is the opposite of the light's direction vector
     
     // ambient
-    vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
+    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
 
     // diffuse 
     float diff = max(dot(normal, lightDir), 0.0f);
@@ -51,7 +51,7 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
     float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // place specular exponent and intensity here
     vec3 specular = light.specular * spec;
 
-    return (ambient + diffuse + specular);
+    return (diffuse + specular);
 } 
 
 vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos) {
@@ -67,7 +67,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     float intensity = clamp((theta - light.outerCutoff) / epsilon, 0.0f, 1.0f);
 
     // ambient
-    vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
+    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
 
     // diffuse
     float diff = max(dot(normal, lightDir), 0.0f);
@@ -78,7 +78,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // place specular exponent and intensity here
     vec3 specular = light.specular * spec;
     // vec3 specular = vec3(0.0f); 
-    return (ambient + diffuse + specular) * intensity * attenuation;
+    return (diffuse + specular) * intensity * attenuation;
 }
 
 void main()
@@ -92,6 +92,14 @@ void main()
 
     vec3 result = vec3(0.0f);
 
+    // average of ambient light of all light sources
+    vec3 ambient = vec3(0.0f);
+    ambient += dir_light.ambient;
+    for (int i = 0; i < 2; i++) {
+        ambient += spotlights[i].ambient;
+    }
+    ambient /= 3.0f; // average the ambient light contributions
+    
     // directional light
     result += CalculateDirLight(dir_light, normalDir, viewDir);
 
