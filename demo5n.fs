@@ -15,6 +15,10 @@ struct SpotLight {
     float innerCutoff;
     float outerCutoff;
 
+    float constant;
+    float linear;
+    float quadratic;
+
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
@@ -53,6 +57,10 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
 vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos) {
     vec3 lightDir = normalize(light.position - fragPos);
 
+    // attenuation
+    float distance = length(light.position - fragPos);
+    float attenuation = 1.0f / (light.constant + light.linear * distance + light.quadratic * (distance * distance)); 
+
     // soft edge
     float theta = dot(lightDir, normalize(-light.direction));
     float epsilon = light.innerCutoff - light.outerCutoff;
@@ -68,10 +76,9 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     // specular
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // place specular exponent and intensity here
-    // vec3 specular = light.specular * spec;
-    vec3 specular = vec3(0.0f); // disable specular for spotlights for now to better see the effect of the normal map
-
-    return (ambient + diffuse + specular) * intensity;
+    vec3 specular = light.specular * spec;
+    // vec3 specular = vec3(0.0f); 
+    return (ambient + diffuse + specular) * intensity * attenuation;
 }
 
 void main()
