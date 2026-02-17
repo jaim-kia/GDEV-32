@@ -97,18 +97,23 @@ float vertices[] =
 std::vector<float> station = {};
 std::vector<float> train = {};
 std::vector<float> water = {};
+std::vector<float> rainbow = {};
+std::vector<float> fish = {};
 
 // OpenGL object IDs
 GLuint vao;
 GLuint vbo;
+GLuint instancedVao;
+GLuint instancedVbo;
+GLuint instancedVboMatrix;
 GLuint shader;
 GLuint simple_shader;
-GLuint texture[6];
+GLuint texture[8];
 
-int vertex_data_num =  3;
-GLuint vaos[3], vbos[3];
-std::vector<float> vertex_data[3];
-size_t data_sizes[3];
+int vertex_data_num =  5;
+GLuint vaos[5], vbos[5];
+std::vector<float> vertex_data[5];
+size_t data_sizes[5];
 
 double previousTime = 0.0;
 
@@ -148,6 +153,271 @@ float lastX = WINDOW_WIDTH/2.0f;
 float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
+/*------------------FISH--------------------*/
+
+
+// fish parameters
+const int NUM_FISH = 200;
+const int DT = 16; // milliseconds per frame (~60 FPS)
+const float TURN_RATE = 0.1f; // radians per frame
+const int MAX_SPEED = 30;
+const int MIN_SPEED = 20;
+
+const float AVOID_RADIUS = 0.4f;
+const float AVOID_WEIGHT = 0.5f;
+const float OBSTACLE_WEIGHT = 1.0f;
+const float FLOW_WEIGHT = 1.0f;
+const float AVOID_DISTANCE = 1.5f; // how far influence reaches
+const float EPSILON = 0.0001f;
+
+const glm::vec3 WORLD_UP(0.0f, 1.0f, 0.0f);
+const glm::vec3 TANK_MIN(-20.0f, 0.0f, -20.0f);
+const glm::vec3 TANK_MAX(20.0f);
+
+float tankVertices[] = {
+    // positions          // texture coords  // normals         // colors
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f, // back face
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+
+    // front face
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+
+    // left face
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    // right face
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    // bottom face
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    // top face
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+
+};
+
+struct Fish {
+    glm::vec3 position;
+    glm::vec3 velocity; 
+    float speed;
+    float radius;
+    glm::quat orientation;
+};
+
+std::vector<Fish> fishes(NUM_FISH);
+std::vector<glm::mat4> fishMatrices(NUM_FISH);
+
+void initFish() {
+    float radius = 10.0f;
+    float offset = 5.0f;
+
+    int i = 0;
+    for (auto& f : fishes) {
+        float angle = (float)i++ / (float)NUM_FISH * 360.0f;
+        float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float x = sin(angle) * radius + displacement;
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float y = displacement * 0.4f + 1.0f;
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float z = cos(angle) * radius + displacement;
+        
+        f.position = glm::vec3(x, y, z);
+
+        f.velocity = glm::normalize(glm::vec3(
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f,
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f,
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f
+        ));
+        f.speed = static_cast<float>(((rand() % (MAX_SPEED - MIN_SPEED + 1)) + MIN_SPEED) / 1000.0f);
+        // std::cout << f.speed << std::endl;
+        f.radius = 0.15f;
+        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); 
+    }    
+}
+
+glm::vec3 flowField(const glm::vec3& position, float time) {
+    float flowX = sin(position.z + time);
+    float flowY = cos(position.x + time * 0.5f);
+    float flowZ = cos(position.y + time);
+    return glm::normalize(glm::vec3(flowX, flowY, flowZ));
+}
+
+glm::vec3 avoidNeighbors(const Fish& fish, const std::vector<Fish>& fishes) {
+    glm::vec3 avoidance(0.0f);
+    for (const auto& other : fishes) {
+        if (&fish != &other) {
+            glm::vec3 d = fish.position - other.position;
+            float dist = glm::length(d);
+
+            if (dist < AVOID_RADIUS) {
+                avoidance += glm::normalize(d) * (AVOID_RADIUS - dist);
+            }
+        }
+    }
+    return avoidance;
+}
+
+glm::vec3 avoidWalls(const Fish& f) {
+    glm::vec3 avoidance(0.0f);
+    float margin = 0.5f;
+    
+    glm::vec3 pos = f.position;
+    if (pos.x > TANK_MAX.x - margin) avoidance.x -= 1.0f;
+    if (pos.x < TANK_MIN.x + margin) avoidance.x += 1.0f;
+    if (pos.y > TANK_MAX.y - margin) avoidance.y -= 1.0f;
+    if (pos.y < TANK_MIN.y + margin) avoidance.y += 1.0f;
+    if (pos.z > TANK_MAX.z - margin) avoidance.z -= 1.0f;
+    if (pos.z < TANK_MIN.z - margin) avoidance.z += 1.0f;
+
+    return avoidance;
+}
+
+struct Obstacle {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
+std::vector<Obstacle> obstacles = {
+    {glm::vec3(-7.9399, 6.10147, 2.57709), glm::vec3(8.09769, 1.73833, -2.57709)},
+    {glm::vec3(6.73175, -0.01116, -1.64897), glm::vec3(-6.7474, 2.0365, 1.67077)},
+};
+
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
+std::vector<AABB> aabbs;
+
+void makeAABBs() {
+    for (const Obstacle &obs : obstacles) {
+        AABB box;
+        box.min = glm::min(obs.min, obs.max);
+        box.max = glm::max(obs.min, obs.max);
+        aabbs.push_back(box);
+    }
+}
+
+
+glm::vec3 closestPointOnAABB(const glm::vec3& point, const glm::vec3& min, const glm::vec3& max) {
+    return glm::clamp(point, min, max);
+}
+
+glm::vec3 avoidBoundingBox(const Fish& fish, const glm::vec3& boxMin, const glm::vec3& boxMax) {
+    glm::vec3 closest = closestPointOnAABB(fish.position, boxMin, boxMax);
+    glm::vec3 toFish = fish.position - closest;
+    float distance = glm::length(toFish);
+
+    if (distance > AVOID_DISTANCE)
+        return glm::vec3(0.0f);
+
+    if (distance < EPSILON) {
+        glm::vec3 center = (boxMin + boxMax) * 0.5f;
+        glm::vec3 dir = glm::normalize(fish.position - center);
+        return dir * AVOID_DISTANCE;
+    }
+
+    float strength = (AVOID_DISTANCE - distance) / AVOID_DISTANCE;
+    return glm::normalize(toFish) * strength;
+}
+
+void computeNextFishStates(float time) {
+    for (auto& f : fishes) {
+        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
+        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+
+        // get obstacles
+        glm::vec3 obstacle(0.0f);
+        for (const AABB& box : aabbs) {
+            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
+        }
+
+        // glm::vec3 steering = flow + avoid + wall + obstacle;
+
+        // glm::vec3 desiredDir = glm::normalize(steering);  
+        // glm::vec3 currentDir = glm::normalize(f.velocity);
+        // glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
+
+        // // new basis
+        // glm::vec3 forward = newDir;
+        // glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
+        // glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        // glm::mat3 rotationMatrix(right, up, forward);
+        // f.orientation = glm::quat_cast(rotationMatrix);
+
+        // f.velocity = forward;
+        // f.position += f.velocity * f.speed * (DT / 16.0f);
+
+        glm::vec3 desiredVelocity = glm::normalize(flow + avoid + wall + obstacle);
+        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning 
+        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time 
+        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient
+
+    }
+}
+
+void computeNextFishStates1(float time) {
+    for (auto& f : fishes) {
+        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
+        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+
+        // get obstacles
+        glm::vec3 obstacle(0.0f);
+        for (const AABB& box : aabbs) {
+            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
+        }
+
+        glm::vec3 steering = flow + avoid + wall + obstacle;
+
+        glm::vec3 desiredDir = glm::normalize(steering);  
+        glm::vec3 currentDir = glm::normalize(f.velocity);
+        glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
+
+        // new basis
+        glm::vec3 forward = newDir;
+        glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
+        glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        glm::mat3 rotationMatrix(right, up, forward);
+        f.orientation = glm::quat_cast(rotationMatrix);
+
+        f.velocity = forward;
+        f.position += f.velocity * f.speed * (DT / 16.0f);
+    }
+}
+
+
+/*------------------------------------------*/
+
 // helper function for reading model data from a file
 void readModelData(std::vector<float> &array, const char* filename) {
     std::ifstream file(filename);
@@ -178,10 +448,14 @@ bool setup()
     readModelData(station, "station_data.txt");
     readModelData(train, "train_data.txt");
     readModelData(water, "water_data.txt");
+    readModelData(fish, "fish_data.txt");
+    readModelData(rainbow, "rainbow_data.txt");
 
     vertex_data[0] = station;
     vertex_data[1] = train;
     vertex_data[2] = water;
+    vertex_data[3] = rainbow;
+    vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     // upload the model to the GPU (explanations omitted for brevity)
     glGenVertexArrays(vertex_data_num, vaos);
@@ -228,10 +502,61 @@ bool setup()
     texture[3] = gdevLoadTexture("tex-train.png", GL_REPEAT, true, true);
     texture[4] = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
     texture[5] = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
-    if (! texture[0] || ! texture[1] || !texture[2] || !texture[3] || !texture[4] || !texture[5])
+    texture[6] = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
+    texture[7] = gdevLoadTexture("tex-fish.png", GL_REPEAT, true, true);
+    if (! texture[0] || ! texture[1] || !texture[2]
+        || !texture[3] || !texture[4] || !texture[5]
+        || !texture[6] || !texture[7])
         return false;
 
-    // enable z-buffer depth testing and face culling
+    /*---------------- INSTANCING FISH -----------------*/
+    initFish();
+    makeAABBs(); 
+
+    glGenVertexArrays(1, &instancedVao);
+    glGenBuffers(1, &instancedVbo);      
+    glGenBuffers(1, &instancedVboMatrix); 
+
+    glBindVertexArray(instancedVao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
+    glBufferData(GL_ARRAY_BUFFER, fish.size() * sizeof(float), fish.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    // glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * NUM_FISH, &fishMatrices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
+    
+    GLuint instancedVaoMatrix = instancedVao;
+    glBindVertexArray(instancedVaoMatrix);
+
+    std::size_t vec4Size = sizeof(glm::vec4);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+    glVertexAttribDivisor(7, 1);
+
+    glBindVertexArray(0);
+    /*--------------------------------------------------*/
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
 
@@ -295,6 +620,7 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
 
     glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.cam.position));
+    glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[3]); 
@@ -307,6 +633,7 @@ void render()
     glUseProgram(simple_shader);
     float currentTime = (float)glfwGetTime();
     glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
+    glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
 
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
@@ -327,6 +654,35 @@ void render()
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 
     glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
+
+    computeNextFishStates1(static_cast<float>(glfwGetTime()));
+
+    // update fish matrices
+    for (int i = 0; i < NUM_FISH; i++) {
+        const Fish& f = fishes[i];
+        glm::mat4 m = glm::mat4(1.0f);
+        m = glm::translate(m, f.position);
+        m *= glm::mat4_cast(f.orientation);
+        // m = glm::scale(m, glm::vec3(0.5f));
+        fishMatrices[i] = m;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
+
+    glUseProgram(simple_shader);
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[7]); 
+    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+
+    glBindVertexArray(instancedVao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+
+    glBindVertexArray(0);
 
 }
 
