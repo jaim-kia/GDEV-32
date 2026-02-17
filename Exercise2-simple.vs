@@ -1,0 +1,37 @@
+/******************************************************************************
+ * This vertex shader improves on the previous one by taking an additional
+ * vertex attribute (vertexTangent), computing a TBN matrix from vertexTangent
+ * and vertexNormal, and passes this TBN matrix (instead of the normal) to the
+ * fragment shader, to facilitate normal mapping.
+ *
+ * Happy hacking! - eric
+ *****************************************************************************/
+
+#version 330 core
+
+layout (location = 0) in vec3 aPos;       
+layout (location = 1) in vec2 aTexCoord;  
+layout (location = 2) in vec3 aNormal;   
+
+out vec2 shaderTexCoord;
+out vec3 shaderPosition;      
+out vec3 shaderNormal;        
+out vec3 shaderLightPosition; 
+
+uniform mat4 projectionTransform;
+uniform mat4 viewTransform;
+uniform mat4 modelTransform;
+uniform vec3 lightPosition;
+
+void main()
+{
+    vec4 viewSpacePos = viewTransform * modelTransform * vec4(aPos, 1.0);
+    shaderPosition = viewSpacePos.xyz;
+    shaderTexCoord = aTexCoord;
+    
+    mat3 normalMatrix = mat3(transpose(inverse(viewTransform * modelTransform)));
+    shaderNormal = normalize(normalMatrix * aNormal);
+
+    shaderLightPosition = (viewTransform * vec4(lightPosition, 1.0)).xyz;
+    gl_Position = projectionTransform * viewSpacePos;
+}

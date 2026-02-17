@@ -95,12 +95,19 @@ float vertices[] =
 };
 
 std::vector<float> station = {};
+std::vector<float> train = {};
 
 // OpenGL object IDs
 GLuint vao;
 GLuint vbo;
 GLuint shader;
-GLuint texture[3];
+GLuint simple_shader;
+GLuint texture[4];
+
+int vertex_data_num =  2;
+GLuint vaos[2], vbos[2];
+std::vector<float> vertex_data[2];
+size_t data_sizes[2];
 
 double previousTime = 0.0;
 
@@ -168,26 +175,38 @@ void readModelData(std::vector<float> &array, const char* filename) {
 bool setup()
 {
     readModelData(station, "station_data.txt");
+    readModelData(train, "train_data.txt");
+
+    vertex_data[0] = station;
+    vertex_data[1] = train;
 
     // upload the model to the GPU (explanations omitted for brevity)
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, station.size() * sizeof(float), station.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);                     // position
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));   // texture coord
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));   // normal
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));   // tangent
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
+    glGenVertexArrays(vertex_data_num, vaos);
+    glGenBuffers(vertex_data_num, vbos);
+
+    for (int i = 0; i < vertex_data_num; ++i) {
+        glBindVertexArray(vaos[i]);
+        glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
+        
+        // std::cout << vertex_data[i].data() << std::endl;
+        // std::cout << vertex_data[i].size() << std::endl;
+        glBufferData(GL_ARRAY_BUFFER, vertex_data[i].size() * sizeof(float), vertex_data[i].data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);                     // position
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));   // texture coord
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));   // normal
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));   // tangent
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+    }
 
     // load our shader program
     shader = gdevLoadShader("demo5n.vs", "demo5n.fs");
-    if (! shader)
-        return false;
+    simple_shader = gdevLoadShader("Exercise2-simple.vs", "Exercise2-simple.fs");
+    if (!shader || !simple_shader) return false;
 
     // since we now use multiple textures, we need to set the texture channel for each texture
     glUseProgram(shader);
@@ -195,11 +214,16 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
 
+    glUseProgram(simple_shader);
+    glUniform1i(glGetUniformLocation(simple_shader, "texture_file"), 0);
+
+
     // load our textures
     texture[0] = gdevLoadTexture("tex-station.png", GL_REPEAT, true, true);
     texture[1] = gdevLoadTexture("TrainStationNormal.png", GL_REPEAT, true, true);
     texture[2] = gdevLoadTexture("TrainStationSpecular.png", GL_REPEAT, true, true);
-    if (! texture[0] || ! texture[1] || !texture[2])
+    texture[3] = gdevLoadTexture("tex-train.png", GL_REPEAT, true, true);
+    if (! texture[0] || ! texture[1] || !texture[2] || !texture[3])
         return false;
 
     // enable z-buffer depth testing and face culling
@@ -246,6 +270,7 @@ void render()
     glUniform3fv(glGetUniformLocation(shader, "lightPosition"),
                  1, glm::value_ptr(main_light.cam.position));
 
+    // Drawing Station
     // ... set the active textures...
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[0]);
@@ -255,8 +280,24 @@ void render()
     glBindTexture(GL_TEXTURE_2D, texture[2]);
 
     // ... then draw our triangles
-    glBindVertexArray(vao);
+    glBindVertexArray(vaos[0]);
     glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
+
+    // Drawing Train
+    glUseProgram(simple_shader);
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+
+    glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.cam.position));
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[3]); 
+    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+
 }
 
 /*****************************************************************************/
