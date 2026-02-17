@@ -15,6 +15,7 @@ in vec2 shaderTexCoord;
 in vec3 shaderLightPosition;
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
+uniform sampler2D specularMap;
 out vec4 fragmentColor;
 
 void main()
@@ -23,8 +24,8 @@ void main()
     // (you should really be passing these parameters into the shader as uniform vars instead)
     vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);  // diffuse
     float ambientIntensity = 0.15f;            // ambient
-    float specularIntensity = 0.5f;            // specular (better implementation: look this up from a specular map!)
-    float specularPower = 32.0f;               // specular exponent
+    float specularIntensity = 2.0f;            // specular (better implementation: look this up from a specular map!)
+    float specularPower = 1024.0f;               // specular exponent
 
     // look up the normal from the normal map, then reorient it with the current model transform via the TBN matrix
     vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
@@ -41,7 +42,9 @@ void main()
     // calculate specular
     vec3 viewDir = normalize(-shaderPosition);
     vec3 reflectDir = reflect(-lightDir, normalDir);
-    vec3 lightSpecular = pow(max(dot(reflectDir, viewDir), 0), specularPower) * lightColor * specularIntensity;
+
+    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
+    vec3 lightSpecular = pow(max(dot(reflectDir, viewDir), 0), specularPower) * lightColor * specularIntensity * textureSpecular;
 
     // compute final fragment color
     fragmentColor = vec4((lightAmbient + lightDiffuse + lightSpecular), 1.0f) * texture(diffuseMap, shaderTexCoord);

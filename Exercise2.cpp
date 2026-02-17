@@ -100,7 +100,7 @@ std::vector<float> station = {};
 GLuint vao;
 GLuint vbo;
 GLuint shader;
-GLuint texture[2];
+GLuint texture[3];
 
 double previousTime = 0.0;
 
@@ -193,11 +193,13 @@ bool setup()
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
+    glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
 
     // load our textures
     texture[0] = gdevLoadTexture("tex-station.png", GL_REPEAT, true, true);
     texture[1] = gdevLoadTexture("TrainStationNormal.png", GL_REPEAT, true, true);
-    if (! texture[0] || ! texture[1])
+    texture[2] = gdevLoadTexture("TrainStationSpecular.png", GL_REPEAT, true, true);
+    if (! texture[0] || ! texture[1] || !texture[2])
         return false;
 
     // enable z-buffer depth testing and face culling
@@ -249,6 +251,8 @@ void render()
     glBindTexture(GL_TEXTURE_2D, texture[0]);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture[1]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[2]);
 
     // ... then draw our triangles
     glBindVertexArray(vao);
