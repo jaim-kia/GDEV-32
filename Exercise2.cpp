@@ -96,18 +96,19 @@ float vertices[] =
 
 std::vector<float> station = {};
 std::vector<float> train = {};
+std::vector<float> water = {};
 
 // OpenGL object IDs
 GLuint vao;
 GLuint vbo;
 GLuint shader;
 GLuint simple_shader;
-GLuint texture[4];
+GLuint texture[6];
 
-int vertex_data_num =  2;
-GLuint vaos[2], vbos[2];
-std::vector<float> vertex_data[2];
-size_t data_sizes[2];
+int vertex_data_num =  3;
+GLuint vaos[3], vbos[3];
+std::vector<float> vertex_data[3];
+size_t data_sizes[3];
 
 double previousTime = 0.0;
 
@@ -176,9 +177,11 @@ bool setup()
 {
     readModelData(station, "station_data.txt");
     readModelData(train, "train_data.txt");
+    readModelData(water, "water_data.txt");
 
     vertex_data[0] = station;
     vertex_data[1] = train;
+    vertex_data[2] = water;
 
     // upload the model to the GPU (explanations omitted for brevity)
     glGenVertexArrays(vertex_data_num, vaos);
@@ -223,7 +226,9 @@ bool setup()
     texture[1] = gdevLoadTexture("TrainStationNormal.png", GL_REPEAT, true, true);
     texture[2] = gdevLoadTexture("TrainStationSpecular.png", GL_REPEAT, true, true);
     texture[3] = gdevLoadTexture("tex-train.png", GL_REPEAT, true, true);
-    if (! texture[0] || ! texture[1] || !texture[2] || !texture[3])
+    texture[4] = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
+    texture[5] = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
+    if (! texture[0] || ! texture[1] || !texture[2] || !texture[3] || !texture[4] || !texture[5])
         return false;
 
     // enable z-buffer depth testing and face culling
@@ -297,6 +302,31 @@ void render()
 
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+
+    // Floor:
+    glUseProgram(simple_shader);
+    float currentTime = (float)glfwGetTime();
+    glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
+
+    glm::mat4 floorModel = glm::mat4(1.0f);
+    floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
+    floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
+    
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(floorModel));
+    glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[4]); 
+    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[5]);
+    glUniform1i(glGetUniformLocation(simple_shader, "shaderTextureSmoke"), 1);
+
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+
+    glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
 
 }
 

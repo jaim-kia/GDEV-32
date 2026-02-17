@@ -14,7 +14,8 @@ layout (location = 1) in vec2 aTexCoord;
 layout (location = 2) in vec3 aNormal;   
 
 out vec2 shaderTexCoord;
-out vec3 shaderPosition;      
+out vec3 worldSpacePosition; 
+out vec3 viewSpacePosition;     
 out vec3 shaderNormal;        
 out vec3 shaderLightPosition; 
 
@@ -25,13 +26,16 @@ uniform vec3 lightPosition;
 
 void main()
 {
-    vec4 viewSpacePos = viewTransform * modelTransform * vec4(aPos, 1.0);
-    shaderPosition = viewSpacePos.xyz;
-    shaderTexCoord = aTexCoord;
+    vec4 worldPos = modelTransform * vec4(aPos, 1.0);
+    worldSpacePosition = worldPos.xyz;
     
+    vec4 viewSpacePos = viewTransform * worldPos;
+    viewSpacePosition = viewSpacePos.xyz;
+
     mat3 normalMatrix = mat3(transpose(inverse(viewTransform * modelTransform)));
     shaderNormal = normalize(normalMatrix * aNormal);
-
     shaderLightPosition = (viewTransform * vec4(lightPosition, 1.0)).xyz;
+
+    shaderTexCoord = aTexCoord;
     gl_Position = projectionTransform * viewSpacePos;
 }
