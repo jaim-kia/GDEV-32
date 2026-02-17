@@ -102,47 +102,43 @@ GLuint vbo;
 GLuint shader;
 GLuint texture[2];
 
-// helper struct for defining spherical polar coordinates
-struct polar
-{
-    float radius      =   8.0f;   // distance from the origin
-    float inclination = -20.0f;   // angle on the YZ vertical plane
-    float azimuth     =  45.0f;   // angle on the XZ horizontal plane
+double previousTime = 0.0;
 
-    // sanity ranges to prevent strange behavior like flipping axes, etc.
-    // (you can change these as you see fit)
-    static constexpr float minRadius      =   0.1f;
-    static constexpr float maxRadius      =  20.0f;
-    static constexpr float minInclination = -89.0f;
-    static constexpr float maxInclination =  89.0f;
+struct Camera {
+    glm::vec3 position = glm::vec3(0.0f, 3.0f, 5.0f);
+    glm::vec3 front = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-    // restricts the coordinates to sanity ranges
-    void clamp()
-    {
-        if (radius < minRadius)
-            radius = minRadius;
-        if (radius > maxRadius)
-            radius = maxRadius;
-        if (inclination < minInclination)
-            inclination = minInclination;
-        if (inclination > maxInclination)
-            inclination = maxInclination;
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+    float fov = 90.0f;
+};
+
+struct Light {
+    Camera cam;
+    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+
+    float ambient;
+    float diffuse;
+    float specular_exponent;
+
+    glm::vec3 getPosition() {
+        return cam.position;
     }
-
-    // converts the spherical polar coordinates to a vec3 in Cartesian coordinates
-    glm::vec3 toCartesian()
-    {
-        glm::mat4 mat = glm::mat4(1.0f);  // set to identity first
-        mat = glm::rotate(mat, glm::radians(azimuth), glm::vec3(0.0f, 1.0f, 0.0f));
-        mat = glm::rotate(mat, glm::radians(inclination), glm::vec3(1.0f, 0.0f, 0.0f));
-        return mat * glm::vec4(0.0f, 0.0f, radius, 1.0f);
+    glm::vec3 getDirection() {
+        return cam.front;
     }
 };
 
-// variables for tracking camera and light position
-polar camera;
-glm::vec3 lightPosition = glm::vec3(-5.0f, 3.0f, 5.0f);
-double previousTime = 0.0;
+Camera main_camera;
+Light main_light;
+
+Camera* active_camera = &main_camera;
+
+// mouse input tracking variables
+float lastX = WINDOW_WIDTH/2.0f;
+float lastY = WINDOW_HEIGHT/2.0f;
+bool firstMouse = true;
 
 // helper function for reading model data from a file
 void readModelData(std::vector<float> &array, const char* filename) {
@@ -171,7 +167,7 @@ void readModelData(std::vector<float> &array, const char* filename) {
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
 {
-    readModelData(station, "output.txt");
+    readModelData(station, "station_data.txt");
 
     // upload the model to the GPU (explanations omitted for brevity)
     glGenVertexArrays(1, &vao);
@@ -199,14 +195,14 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
 
     // load our textures
-    texture[0] = gdevLoadTexture("demo5.png", GL_REPEAT, true, true);
-    texture[1] = gdevLoadTexture("demo5n.png", GL_REPEAT, true, true);
+    texture[0] = gdevLoadTexture("tex-station.png", GL_REPEAT, true, true);
+    texture[1] = gdevLoadTexture("TrainStationNormal.png", GL_REPEAT, true, true);
     if (! texture[0] || ! texture[1])
         return false;
 
     // enable z-buffer depth testing and face culling
     glEnable(GL_DEPTH_TEST);
-    // glEnable(GL_CULL_FACE);
+    glEnable(GL_CULL_FACE);
 
     return true;
 }
@@ -214,49 +210,6 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
-    // find the elapsed time since the last frame
-    double currentTime = glfwGetTime();
-    double elapsedTime = (currentTime - previousTime);
-    previousTime = currentTime;
-
-    // define how much to rotate and translate according to time
-    float rotationAmount = 100.0f * elapsedTime;
-    float translationAmount = 10.0f * elapsedTime;
-
-    // handle key events for camera
-    if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS)
-        camera.radius -= translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS)
-        camera.radius += translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS)
-        camera.azimuth -= rotationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS)
-        camera.azimuth += rotationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS)
-        camera.inclination += rotationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS)
-        camera.inclination -= rotationAmount;
-    camera.clamp();
-
-    // get the Cartesian coordinates of the camera
-    glm::vec3 cameraPosition = camera.toCartesian();
-
-    // get a "forward" vector for controlling the light position
-    glm::vec3 lightForward = glm::normalize(glm::vec3(-cameraPosition.x, 0.0f, -cameraPosition.z));
-
-    if (glfwGetKey(pWindow, GLFW_KEY_I) == GLFW_PRESS)
-        lightPosition += lightForward * translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_K) == GLFW_PRESS)
-        lightPosition -= lightForward * translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_J) == GLFW_PRESS)
-        lightPosition -= glm::cross(lightForward, glm::vec3(0.0f, 1.0f, 0.0f)) * translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS)
-        lightPosition += glm::cross(lightForward, glm::vec3(0.0f, 1.0f, 0.0f)) * translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_U) == GLFW_PRESS)
-        lightPosition -= glm::vec3(0.0f, 1.0f, 0.0f) * translationAmount;
-    if (glfwGetKey(pWindow, GLFW_KEY_O) == GLFW_PRESS)
-        lightPosition += glm::vec3(0.0f, 1.0f, 0.0f) * translationAmount;
-
     // clear the whole frame
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -266,7 +219,7 @@ void render()
 
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
-    projectionTransform = glm::perspective(glm::radians(45.0f),                   // fov
+    projectionTransform = glm::perspective(glm::radians(active_camera->fov),                   // fov
                                            (float) WINDOW_WIDTH / WINDOW_HEIGHT,  // aspect ratio
                                            0.1f,                                  // near plane
                                            100.0f);                               // far plane
@@ -275,11 +228,12 @@ void render()
 
     // ... set up the view matrix...
     glm::mat4 viewTransform;
-    viewTransform = glm::lookAt(cameraPosition,                // eye position
-                                glm::vec3(0.0f, 0.0f, 0.0f),   // center position
-                                glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+    viewTransform = glm::lookAt(active_camera->position,                // eye position
+                                active_camera->position + active_camera->front,   // center position
+                                active_camera->up);  // up vector
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
                        1, GL_FALSE, glm::value_ptr(viewTransform));
+
 
     // ... set up the model matrix... (just identity for this demo)
     glm::mat4 modelTransform = glm::mat4(1.0f);
@@ -288,7 +242,7 @@ void render()
 
     // ... set up the light position...
     glUniform3fv(glGetUniformLocation(shader, "lightPosition"),
-                 1, glm::value_ptr(lightPosition));
+                 1, glm::value_ptr(main_light.cam.position));
 
     // ... set the active textures...
     glActiveTexture(GL_TEXTURE0);
@@ -302,6 +256,131 @@ void render()
 }
 
 /*****************************************************************************/
+
+// input handling function for controlling the camera; called by the main function every frame
+void processInput(GLFWwindow *pWindow, float deltaTime) {
+    float cameraSpeed = 1.5f * deltaTime;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+        cameraSpeed *= 2.0f;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS) {
+        active_camera->position += active_camera->front * cameraSpeed;
+    } 
+    
+    if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS) {
+        active_camera->position += -active_camera->front * cameraSpeed;
+    } 
+
+    if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS) {
+        active_camera->position += glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS) {
+        active_camera->position += -glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS) {
+        active_camera->position += active_camera->up * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS) {
+        active_camera->position += -active_camera->up * cameraSpeed;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS) {
+        active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
+        active_camera->yaw = -90.0f;
+        active_camera->pitch = 0.0f;
+        active_camera->fov = 45.0f;
+        active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
+        active_camera->fov += 30.0f * deltaTime;
+        if (active_camera->fov > 90.0f) {
+            active_camera->fov = 90.0f;
+        }
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
+        active_camera->fov -= 30.0f * deltaTime;
+        if (active_camera->fov < 1.0f) {
+            active_camera->fov = 1.0f;
+        }
+    }
+    
+    if (glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_1) == GLFW_PRESS) {
+        active_camera = &main_camera;
+    }
+    
+    if (glfwGetKey(pWindow, GLFW_KEY_2) == GLFW_PRESS) {
+        active_camera = &main_light.cam;
+    }
+
+
+}
+
+void mouse_callback(GLFWwindow* pWindow, double xpos, double ypos) {
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos-lastX;
+    float yoffset = lastY - ypos; // reverse cause y is reversed in window space;
+
+    lastX = xpos;
+    lastY = ypos;
+
+    const float sensitivity = 0.1f;
+
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    active_camera->yaw += xoffset;
+    active_camera->pitch += yoffset;
+
+    if (active_camera->pitch > 89.0f) {
+        active_camera->pitch = 89.0f;
+    }
+    if (active_camera->pitch < -89.0f) {
+        active_camera->pitch = -89.0f;
+    }
+
+    glm::vec3 cam_dir;
+    cam_dir.x = cos(glm::radians(active_camera->yaw)) * cos(glm::radians(active_camera->pitch));
+    cam_dir.y = sin(glm::radians(active_camera->pitch));
+    cam_dir.z = sin(glm::radians(active_camera->yaw)) * cos(glm::radians(active_camera->pitch));
+    active_camera->front = glm::normalize(cam_dir);
+    
+}
+
+void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
+    active_camera->fov -= (float)yoffset;
+    if (active_camera->fov < 1.0f) {
+        active_camera->fov = 1.0f;
+    }
+    if (active_camera->fov > 90.0f) {
+        active_camera->fov = 90.0f;
+    }
+
+}
 
 // handler called by GLFW when there is a keyboard event
 void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)
@@ -351,9 +430,16 @@ int main(int argc, char** argv)
     // don't miss any momentary keypresses
     glfwSetInputMode(pWindow, GLFW_STICKY_KEYS, GLFW_TRUE);
 
+    // set up callback functions to handle mouse events
+    glfwSetInputMode(pWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  
+    glfwSetCursorPosCallback(pWindow, mouse_callback);
+    glfwSetScrollCallback(pWindow, scroll_callback);
+
     // initialize GLAD, which acts as a library loader for the current OS's native OpenGL library
     gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
 
+    float delta;
+    float last_frame = 0.0f;
     // if our initial setup is successful...
     if (setup())
     {
@@ -363,6 +449,10 @@ int main(int argc, char** argv)
             // render our next frame
             // (by default, GLFW uses double-buffering with a front and back buffer;
             // all drawing goes to the back buffer, so the frame does not get shown yet)
+            float current_frame = glfwGetTime();
+            delta = current_frame - last_frame;
+            last_frame = current_frame;
+            processInput(pWindow, delta);
             render();
 
             // swap the GLFW front and back buffers to show the next frame
