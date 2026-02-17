@@ -115,12 +115,21 @@ struct Camera {
 };
 
 struct Light {
-    Camera cam;
-    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+    enum Type {
+        DIRECTIONAL,
+        POINT,
+        SPOTLIGHT
+    } type = DIRECTIONAL;
 
-    float ambient;
-    float diffuse;
-    float specular_exponent;
+    glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    glm::vec3 diffuse = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 specular = glm::vec3(0.5f, 0.5f, 0.5f);
+    float specular_exponent = 32.0f;
+    float inner_cutoff = 0.0f; // for spotlight
+    float outer_cutoff = 0.0f; // for spotlight
+    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+    
+    Camera cam;
 
     glm::vec3 getPosition() {
         return cam.position;
@@ -132,6 +141,7 @@ struct Light {
 
 Camera main_camera;
 Light main_light;
+Light spotlights[2];
 
 Camera* active_camera = &main_camera;
 
@@ -163,11 +173,24 @@ void readModelData(std::vector<float> &array, const char* filename) {
     
 }
 
+void setupLights() {
+    main_light.cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
+    for (int i = 0; i < 2; i++) {
+        // spotlights[i].cam.position = glm::vec3(-5.0f + i * 10.0f, 5.0f, 0.0f);
+        // spotlights[i].cam.front = glm::vec3(0.0f, -1.0f, 0.0f);
+        spotlights[i].type = Light::SPOTLIGHT;
+        spotlights[i].inner_cutoff = 15.5f;
+        spotlights[i].outer_cutoff = 17.0f;
+    }
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
 {
     readModelData(station, "station_data.txt");
+
+    setupLights();
 
     // upload the model to the GPU (explanations omitted for brevity)
     glGenVertexArrays(1, &vao);
@@ -240,9 +263,54 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
+    // std::cout<< "light direction: " << main_light.getDirection().x << ", " << main_light.getDirection().y << ", " << main_light.getDirection().z << std::endl;
+    // std::cout<< "light position: " << main_light.getPosition().x << ", " << main_light.getPosition().y << ", " << main_light.getPosition().z << std::endl;
+    // std::cout<< "light ambient: " << main_light.ambient << ", diffuse: " << main_light.diffuse << ", specular: " << main_light.specular << std::endl;
     // ... set up the light position...
-    glUniform3fv(glGetUniformLocation(shader, "lightPosition"),
-                 1, glm::value_ptr(main_light.cam.position));
+    glm::vec3 viewDir = glm::mat3(viewTransform) * main_light.getDirection();
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.direction"),
+                 1, glm::value_ptr(viewDir));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.ambient"),
+                 1, glm::value_ptr(main_light.ambient));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.diffuse"),
+                 1, glm::value_ptr(main_light.diffuse));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
+                 1, glm::value_ptr(main_light.specular));
+
+    for (int i = 0; i < 2; i++) {
+        std::string base = "spotlights[" + std::to_string(i) + "].";
+
+        // glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i], 1.0));
+        // glm::vec3 dirView = glm::mat3(viewTransform) * lightDir[i];
+        // std::cout<< "spotlight " << i << " direction: " << spotlights[i].getDirection().x << ", " << spotlights[i].getDirection().y << ", " << spotlights[i].getDirection().z << std::endl;
+        // std::cout<< "spotlight " << i << " position: " << spotlights[i].getPosition().x << ", " << spotlights[i].getPosition().y << ", " << spotlights[i].getPosition().z << std::endl;
+        // std::cout<< "spotlight " << i << " ambient: " << spotlights[i].ambient.x << ", " << spotlights[i].ambient.y << ", " << spotlights[i].ambient.z << std::endl;
+        // std::cout<< "spotlight " << i << " diffuse: " << spotlights[i].diffuse.x << ", " << spotlights[i].diffuse.y << ", " << spotlights[i].diffuse.z << std::endl;
+        // std::cout<< "spotlight " << i << " specular: " << spotlights[i].specular.x << ", " << spotlights[i].specular.y << ", " << spotlights[i].specular.z << std::endl;
+        glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i].getPosition(), 1.0));
+        glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                    1, glm::value_ptr(posView));
+
+        glm::vec3 dirView = glm::mat3(viewTransform) * spotlights[i].getDirection();
+        glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+                    1, glm::value_ptr(dirView));
+
+        glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()),
+                    glm::cos(glm::radians(spotlights[i].inner_cutoff)));
+
+        glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()),
+                    glm::cos(glm::radians(spotlights[i].outer_cutoff)));
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                     1, glm::value_ptr(spotlights[i].ambient));
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                     1, glm::value_ptr(spotlights[i].diffuse));
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                     1, glm::value_ptr(spotlights[i].specular));
+    }
+
 
     // ... set the active textures...
     glActiveTexture(GL_TEXTURE0);
@@ -329,6 +397,13 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
     
     if (glfwGetKey(pWindow, GLFW_KEY_2) == GLFW_PRESS) {
         active_camera = &main_light.cam;
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_3) == GLFW_PRESS) {
+        active_camera = &spotlights[0].cam;
+    }
+    if (glfwGetKey(pWindow, GLFW_KEY_4) == GLFW_PRESS) {
+        active_camera = &spotlights[1].cam;
     }
 
 
