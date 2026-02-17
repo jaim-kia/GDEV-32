@@ -1,23 +1,13 @@
 /******************************************************************************
- * This demo is a modification of demo5.cpp to implement normal mapping,
- * simulating bumpy surfaces.
- *
- * The vertex data now includes tangent vectors (in addition to normals), and
- * the texture code is upgraded to load a diffuse map and a normal map at the
- * same time.
- *
- * (Note that the shader code is also updated -- see demo5n.vs and demo5n.fs.)
- *
- * TIP: To help you understand the code better, I highly recommend that you
- * view the changes between demo5 and demo5n in VS Code by doing the following:
- *
- * 1. Right-click demo5.cpp in VS Code's Explorer pane and click
- *    "Select for Compare".
- * 2. Right-click the demo5n.cpp and click "Compare with Selected".
- *
- * (Do the same for demo5.vs/demo5n.vs and demo5.fs/demo5n.fs.)
- *
- * Happy hacking! - eric
+ * Use WASD keys to move the main camera, QE to move up and down; use left shift to move faster
+ * Use mouse to look around; use scroll wheel to adjust spotlight cutoff angles
+ * Press F to switch to fill mode, L to switch to line mode, P to switch to point mode
+ * Press R to reset camera position and orientation, Z/X to adjust main camera FOV
+ * 
+ * Press 1 to switch to main camera, 2 to switch to directional light camera;
+ *  
+ * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
+ * the same set of keys to move the spotlight and mouse to adjust its direction; 
  *****************************************************************************/
 
 #include <iostream>
@@ -104,6 +94,8 @@ GLuint texture[2];
 
 double previousTime = 0.0;
 
+struct Light;
+
 struct Camera {
     glm::vec3 position = glm::vec3(0.0f, 3.0f, 5.0f);
     glm::vec3 front = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -112,6 +104,9 @@ struct Camera {
     float yaw = -90.0f;
     float pitch = 0.0f;
     float fov = 90.0f;
+
+    // owner pointer
+    struct Light* owner = nullptr;
 };
 
 struct Light {
@@ -136,6 +131,10 @@ struct Light {
     float quadratic = 0.032f;
     
     Camera cam;
+
+    Light() {
+        cam.owner = this;
+    }
 
     glm::vec3 getPosition() {
         return cam.position;
@@ -185,7 +184,7 @@ void setupLights() {
         // spotlights[i].cam.position = glm::vec3(0.f, 5.0f, -5.0f + i * 10.0f);
         // spotlights[i].cam.front = glm::vec3(0.0f, -1.0f, 0.0f);
         spotlights[i].type = Light::SPOTLIGHT;
-        spotlights[i].inner_cutoff = 15.0f;
+        spotlights[i].inner_cutoff = 12.0f;
         spotlights[i].outer_cutoff = 17.0f;
     }
 }
@@ -450,15 +449,29 @@ void mouse_callback(GLFWwindow* pWindow, double xpos, double ypos) {
 }
 
 void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
-    active_camera->fov -= (float)yoffset;
-    if (active_camera->fov < 1.0f) {
-        active_camera->fov = 1.0f;
-    }
-    if (active_camera->fov > 90.0f) {
-        active_camera->fov = 90.0f;
-    }
+    if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+        Light* light = active_camera->owner;
+    
+        float spread = 5.0f; 
+        light->inner_cutoff += (float)yoffset;
+        if (light->inner_cutoff < 1.0f) light->inner_cutoff = 1.0f;
+        if (light->inner_cutoff > (90.0f - spread)) light->inner_cutoff = 90.0f - spread;
 
+        // force the outer cutoff to always be exactly 'spread' degrees larger
+        light->outer_cutoff = light->inner_cutoff + spread;
+    }
+    else {
+        active_camera->fov -= (float)yoffset;
+        if (active_camera->fov < 1.0f) {
+            active_camera->fov = 1.0f;
+        }
+        if (active_camera->fov > 90.0f) {
+            active_camera->fov = 90.0f;
+    }
+    }
 }
+
+
 
 // handler called by GLFW when there is a keyboard event
 void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)
