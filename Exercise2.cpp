@@ -27,7 +27,7 @@ GLFWwindow *pWindow;
 std::vector<float> station = {};
 std::vector<float> train = {};
 std::vector<float> water = {};
-std::vector<float> rainbow = {};
+std::vector<float> cave = {};
 std::vector<float> fish = {};
 
 // OpenGL object IDs
@@ -415,12 +415,12 @@ bool setup()
     readModelData(train, "train_data.txt");
     readModelData(water, "water_data.txt");
     readModelData(fish, "fish_data.txt");
-    readModelData(rainbow, "rainbow_data.txt");
+    readModelData(cave, "cave_data.txt");
 
     vertex_data[0] = station;
     vertex_data[1] = train;
     vertex_data[2] = water;
-    vertex_data[3] = rainbow;
+    vertex_data[3] = cave;
     vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     setupLights();
@@ -470,7 +470,7 @@ bool setup()
     texture[3] = gdevLoadTexture("tex-train.png", GL_REPEAT, true, true);
     texture[4] = gdevLoadTexture("tex-water.png", GL_REPEAT, true, true);
     texture[5] = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
-    texture[6] = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
+    texture[6] = gdevLoadTexture("tex-cave.png", GL_REPEAT, true, true);
     texture[7] = gdevLoadTexture("tex-fish.png", GL_REPEAT, true, true);
     texture[8] = gdevLoadTexture("TrainCartNormal.png", GL_REPEAT, true, true);
     texture[9] = gdevLoadTexture("TrainCartSpecular.png", GL_REPEAT, true, true);
@@ -662,6 +662,7 @@ void render()
 
     glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
 
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
@@ -682,6 +683,17 @@ void render()
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 
     glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
+
+    // cave:
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[6]); 
+    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
+
 
     computeNextFishStates1(static_cast<float>(glfwGetTime()));
 
