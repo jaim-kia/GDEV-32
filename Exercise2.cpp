@@ -38,7 +38,7 @@ GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
 GLuint simple_shader;
-GLuint texture[12];
+GLuint texture[14];
 
 int vertex_data_num =  5;
 GLuint vaos[5], vbos[5];
@@ -476,9 +476,12 @@ bool setup()
     texture[9] = gdevLoadTexture("TrainCartSpecular.png", GL_REPEAT, true, true);
     texture[10] = gdevLoadTexture("FishNormal.png", GL_REPEAT, true, true);
     texture[11] = gdevLoadTexture("FishSpecular.png", GL_REPEAT, true, true);
+    texture[12] = gdevLoadTexture("CaveNormal.png", GL_REPEAT, true, true);
+    texture[13] = gdevLoadTexture("CaveSpecular.png", GL_REPEAT, true, true);
     if (! texture[0] || ! texture[1] || !texture[2]
         || !texture[3] || !texture[4] || !texture[5]
-        || !texture[6] || !texture[7] || !texture[8] || !texture[9])
+        || !texture[6] || !texture[7] || !texture[8] || !texture[9]
+        || !texture[10] || !texture[11] || !texture[12] || !texture[13])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -684,13 +687,15 @@ void render()
 
     glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
 
-    // cave:
+    // cave:  
+    glUseProgram(shader);
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]); 
-    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+    glBindTexture(GL_TEXTURE_2D, texture[6]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[12]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[13]);
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
