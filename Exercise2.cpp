@@ -660,6 +660,9 @@ void render()
     glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
     glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
 
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
     floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
