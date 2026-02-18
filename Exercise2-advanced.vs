@@ -4,17 +4,24 @@ layout (location = 0) in vec3 vertexPosition;
 layout (location = 1) in vec2 vertexTexCoord;
 layout (location = 2) in vec3 vertexNormal;
 layout (location = 3) in vec3 vertexTangent;
+layout (location = 4) in mat4 instanceMatrix;  
+
 uniform mat4 projectionTransform;
 uniform mat4 viewTransform;
 uniform mat4 modelTransform;
+uniform bool isInstanced;
+
 out vec3 shaderPosition;
 out mat3 shaderTBN;
 out vec2 shaderTexCoord;
 
 void main()
 {
+    // getting final Model
+    mat4 finalModel = isInstanced ? instanceMatrix : modelTransform;
+
     // combine the model and view transforms to get the camera space transform
-    mat4 modelViewTransform = viewTransform * modelTransform;
+    mat4 modelViewTransform = viewTransform * finalModel;
 
     // compute the vertex's attributes in camera space
     shaderPosition = vec3(modelViewTransform * vec4(vertexPosition, 1.0f));
