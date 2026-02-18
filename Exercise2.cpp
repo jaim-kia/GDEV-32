@@ -108,7 +108,7 @@ GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
 GLuint simple_shader;
-GLuint texture[8];
+GLuint texture[10];
 
 int vertex_data_num =  5;
 GLuint vaos[5], vbos[5];
@@ -492,7 +492,7 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
 
     glUseProgram(simple_shader);
-    glUniform1i(glGetUniformLocation(simple_shader, "texture_file"), 0);
+    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
 
 
     // load our textures
@@ -504,9 +504,11 @@ bool setup()
     texture[5] = gdevLoadTexture("tex-disp.png", GL_REPEAT, true, true);
     texture[6] = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
     texture[7] = gdevLoadTexture("tex-fish.png", GL_REPEAT, true, true);
+    texture[8] = gdevLoadTexture("TrainCartNormal.png", GL_REPEAT, true, true);
+    texture[9] = gdevLoadTexture("test.png", GL_REPEAT, true, true);
     if (! texture[0] || ! texture[1] || !texture[2]
         || !texture[3] || !texture[4] || !texture[5]
-        || !texture[6] || !texture[7])
+        || !texture[6] || !texture[7] || !texture[8] || !texture[9])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -613,18 +615,22 @@ void render()
     glBindVertexArray(vaos[0]);
     glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
 
-    // Drawing Train
-    glUseProgram(simple_shader);
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+    // // Drawing Train
+    glUseProgram(shader);
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
 
-    glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.cam.position));
-    glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
+    // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.cam.position));
+    // glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
     
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[3]); 
-    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+    glBindTexture(GL_TEXTURE_2D, texture[3]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[8]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[9]);
+    // glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
 
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
