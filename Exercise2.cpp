@@ -1,23 +1,13 @@
 /******************************************************************************
- * This demo is a modification of demo5.cpp to implement normal mapping,
- * simulating bumpy surfaces.
- *
- * The vertex data now includes tangent vectors (in addition to normals), and
- * the texture code is upgraded to load a diffuse map and a normal map at the
- * same time.
- *
- * (Note that the shader code is also updated -- see demo5n.vs and demo5n.fs.)
- *
- * TIP: To help you understand the code better, I highly recommend that you
- * view the changes between demo5 and demo5n in VS Code by doing the following:
- *
- * 1. Right-click demo5.cpp in VS Code's Explorer pane and click
- *    "Select for Compare".
- * 2. Right-click the demo5n.cpp and click "Compare with Selected".
- *
- * (Do the same for demo5.vs/demo5n.vs and demo5.fs/demo5n.fs.)
- *
- * Happy hacking! - eric
+ * Use WASD keys to move the main camera, QE to move up and down; use left shift to move faster
+ * Use mouse to look around; use scroll wheel to adjust spotlight cutoff angles
+ * Press F to switch to fill mode, L to switch to line mode, P to switch to point mode
+ * Press R to reset camera position and orientation, Z/X to adjust main camera FOV
+ * 
+ * Press 1 to switch to main camera, 2 to switch to directional light camera;
+ *  
+ * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
+ * the same set of keys to move the spotlight and mouse to adjust its direction; 
  *****************************************************************************/
 
 #include <iostream>
@@ -29,71 +19,10 @@
 // change this to your desired window attributes
 #define WINDOW_WIDTH  1280
 #define WINDOW_HEIGHT 720
-#define WINDOW_TITLE  "Hello Lighting (use WASDQE keys for camera, IKJLUO keys for light)"
+#define WINDOW_TITLE  "Exercise 2"
 GLFWwindow *pWindow;
 
-// model
-float vertices[] =
-{
-    // position (x, y, z)    normal (x, y, z)     tangent (x, y, z)    texture coordinates (s, t)
-
-    // ground plane
-    -8.00f, -2.00f,  8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     8.00f, -2.00f,  8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  4.0f, 0.0f,
-     8.00f, -2.00f, -8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  4.0f, 4.0f,
-    -8.00f, -2.00f,  8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     8.00f, -2.00f, -8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  4.0f, 4.0f,
-    -8.00f, -2.00f, -8.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 4.0f,
-
-    // cube top
-    -1.00f,  1.00f,  1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f,  1.00f,  1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-     1.00f,  1.00f, -1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f,  1.00f,  1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f,  1.00f, -1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f,  1.00f, -1.00f,  0.0f,  1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-    // cube bottom
-    -1.00f, -1.00f, -1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f, -1.00f, -1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-     1.00f, -1.00f,  1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f, -1.00f, -1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f, -1.00f,  1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f, -1.00f,  1.00f,  0.0f, -1.0f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-    // cube front
-    -1.00f, -1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f, -1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-     1.00f,  1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f, -1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     1.00f,  1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-    -1.00f,  1.00f,  1.00f,  0.0f,  0.0f,  1.0f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-    // cube back
-     1.00f, -1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-    -1.00f, -1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-    -1.00f,  1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-     1.00f, -1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-    -1.00f,  1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-     1.00f,  1.00f, -1.00f,  0.0f,  0.0f, -1.0f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-    // cube right
-     1.00f, -1.00f,  1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-     1.00f, -1.00f, -1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-     1.00f,  1.00f, -1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-     1.00f, -1.00f,  1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-     1.00f,  1.00f, -1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-     1.00f,  1.00f,  1.00f,  1.0f,  0.0f,  0.0f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
-
-    // cube left
-    -1.00f, -1.00f, -1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-    -1.00f, -1.00f,  1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,
-    -1.00f,  1.00f,  1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-    -1.00f, -1.00f, -1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-    -1.00f,  1.00f,  1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-    -1.00f,  1.00f, -1.00f, -1.0f,  0.0f,  0.0f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f
-};
-
+// models
 std::vector<float> station = {};
 std::vector<float> train = {};
 std::vector<float> water = {};
@@ -117,6 +46,8 @@ size_t data_sizes[5];
 
 double previousTime = 0.0;
 
+struct Light;
+
 struct Camera {
     glm::vec3 position = glm::vec3(0.0f, 3.0f, 5.0f);
     glm::vec3 front = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -125,15 +56,37 @@ struct Camera {
     float yaw = -90.0f;
     float pitch = 0.0f;
     float fov = 90.0f;
+
+    // owner pointer
+    struct Light* owner = nullptr;
 };
 
 struct Light {
-    Camera cam;
-    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+    enum Type {
+        DIRECTIONAL,
+        POINT,
+        SPOTLIGHT
+    } type = DIRECTIONAL;
 
-    float ambient;
-    float diffuse;
-    float specular_exponent;
+    glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    glm::vec3 diffuse = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 specular = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+    float specular_exponent = 32.0f;
+
+    float inner_cutoff = 0.0f; // for spotlight
+    float outer_cutoff = 0.0f; // for spotlight
+    
+    // for attenuation (for point and spotlight)
+    float constant = 1.0f; 
+    float linear = 0.09f;
+    float quadratic = 0.032f;
+    
+    Camera cam;
+
+    Light() {
+        cam.owner = this;
+    }
 
     glm::vec3 getPosition() {
         return cam.position;
@@ -145,6 +98,7 @@ struct Light {
 
 Camera main_camera;
 Light main_light;
+Light spotlights[2];
 
 Camera* active_camera = &main_camera;
 
@@ -441,6 +395,17 @@ void readModelData(std::vector<float> &array, const char* filename) {
     
 }
 
+void setupLights() {
+    main_light.cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
+    for (int i = 0; i < 2; i++) {
+        // spotlights[i].cam.position = glm::vec3(0.f, 5.0f, -5.0f + i * 10.0f);
+        // spotlights[i].cam.front = glm::vec3(0.0f, -1.0f, 0.0f);
+        spotlights[i].type = Light::SPOTLIGHT;
+        spotlights[i].inner_cutoff = 12.0f;
+        spotlights[i].outer_cutoff = 17.0f;
+    }
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -456,6 +421,8 @@ bool setup()
     vertex_data[2] = water;
     vertex_data[3] = rainbow;
     vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
+
+    setupLights();
 
     // upload the model to the GPU (explanations omitted for brevity)
     glGenVertexArrays(vertex_data_num, vaos);
@@ -577,7 +544,7 @@ void render()
 
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
-    projectionTransform = glm::perspective(glm::radians(active_camera->fov),                   // fov
+    projectionTransform = glm::perspective(glm::radians(active_camera->fov),      // fov
                                            (float) WINDOW_WIDTH / WINDOW_HEIGHT,  // aspect ratio
                                            0.1f,                                  // near plane
                                            100.0f);                               // far plane
@@ -598,9 +565,49 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
+   
     // ... set up the light position...
-    glUniform3fv(glGetUniformLocation(shader, "lightPosition"),
-                 1, glm::value_ptr(main_light.cam.position));
+    glm::vec3 viewDir = glm::mat3(viewTransform) * main_light.getDirection();
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.direction"),
+                 1, glm::value_ptr(viewDir));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.ambient"),
+                 1, glm::value_ptr(main_light.ambient));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.diffuse"),
+                 1, glm::value_ptr(main_light.diffuse));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
+                 1, glm::value_ptr(main_light.specular));
+
+    for (int i = 0; i < 2; i++) {
+        std::string base = "spotlights[" + std::to_string(i) + "].";
+        
+        glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i].getPosition(), 1.0));
+        glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                    1, glm::value_ptr(posView));
+
+        glm::vec3 dirView = glm::mat3(viewTransform) * spotlights[i].getDirection();
+        glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+                    1, glm::value_ptr(dirView));
+
+        glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].inner_cutoff)));
+        
+        glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].outer_cutoff)));
+        
+        glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), spotlights[i].constant);
+        
+        glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), spotlights[i].linear);
+        
+        glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), spotlights[i].quadratic);
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                     1, glm::value_ptr(spotlights[i].ambient));
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                     1, glm::value_ptr(spotlights[i].diffuse));
+
+        glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                     1, glm::value_ptr(spotlights[i].specular));
+    }
+
 
     // Drawing Station
     // ... set the active textures...
@@ -768,6 +775,13 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
         active_camera = &main_light.cam;
     }
 
+    if (glfwGetKey(pWindow, GLFW_KEY_3) == GLFW_PRESS) {
+        active_camera = &spotlights[0].cam;
+    }
+    if (glfwGetKey(pWindow, GLFW_KEY_4) == GLFW_PRESS) {
+        active_camera = &spotlights[1].cam;
+    }
+
 
 }
 
@@ -809,15 +823,28 @@ void mouse_callback(GLFWwindow* pWindow, double xpos, double ypos) {
 }
 
 void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
-    active_camera->fov -= (float)yoffset;
-    if (active_camera->fov < 1.0f) {
-        active_camera->fov = 1.0f;
-    }
-    if (active_camera->fov > 90.0f) {
-        active_camera->fov = 90.0f;
-    }
+    if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+        Light* light = active_camera->owner;
+    
+        float spread = 5.0f; 
+        light->inner_cutoff += (float)yoffset;
+        if (light->inner_cutoff < 1.0f) light->inner_cutoff = 1.0f;
+        if (light->inner_cutoff > (90.0f - spread)) light->inner_cutoff = 90.0f - spread;
 
+        // force the outer cutoff to always be exactly 'spread' degrees larger
+        light->outer_cutoff = light->inner_cutoff + spread;
+    }
+    else {
+        active_camera->fov -= (float)yoffset;
+        if (active_camera->fov < 1.0f) {
+            active_camera->fov = 1.0f;
+        }
+        if (active_camera->fov > 90.0f) {
+            active_camera->fov = 90.0f;
+    }
+    }
 }
+
 
 // handler called by GLFW when there is a keyboard event
 void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)

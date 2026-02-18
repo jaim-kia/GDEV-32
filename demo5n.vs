@@ -1,12 +1,3 @@
-/******************************************************************************
- * This vertex shader improves on the previous one by taking an additional
- * vertex attribute (vertexTangent), computing a TBN matrix from vertexTangent
- * and vertexNormal, and passes this TBN matrix (instead of the normal) to the
- * fragment shader, to facilitate normal mapping.
- *
- * Happy hacking! - eric
- *****************************************************************************/
-
 #version 330 core
 
 layout (location = 0) in vec3 vertexPosition;
@@ -16,11 +7,9 @@ layout (location = 3) in vec3 vertexTangent;
 uniform mat4 projectionTransform;
 uniform mat4 viewTransform;
 uniform mat4 modelTransform;
-uniform vec3 lightPosition;
 out vec3 shaderPosition;
 out mat3 shaderTBN;
 out vec2 shaderTexCoord;
-out vec3 shaderLightPosition;
 
 void main()
 {
@@ -41,7 +30,7 @@ void main()
 
     // also compute the light position in camera space
     // (we want all lighting calculations to be done in camera space to avoid losing precision)
-    shaderLightPosition = vec3(viewTransform * vec4(lightPosition, 1.0f));
+    // shaderLightPosition = vec3(viewTransform * vec4(lightPosition, 1.0f));
 
     // we still need OpenGL to compute the final vertex position in projection space
     // to correctly determine where the fragments of the triangle actually go on the screen
