@@ -6,6 +6,8 @@ struct DirLight {
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
+    vec3 color;
+    float specular_exponent;
 };
 
 struct SpotLight {
@@ -22,6 +24,8 @@ struct SpotLight {
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
+    vec3 color;
+    float specular_exponent;
 };
 
 in vec3 shaderPosition;
@@ -48,9 +52,10 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
     vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
 
     // specular shading
+    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // place specular exponent and intensity here
-    vec3 specular = light.specular * spec;
+    float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
+    vec3 specular = light.specular * spec * light.color * textureSpecular;
 
     return (diffuse + specular);
 } 
@@ -74,23 +79,17 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     float diff = max(dot(normal, lightDir), 0.0f);
     vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
 
-    // specular
+    // specular shading
+    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32.0f); // place specular exponent and intensity here
-    vec3 specular = light.specular * spec;
-    // vec3 specular = vec3(0.0f); 
+    float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
+    vec3 specular = light.specular * spec * light.color * textureSpecular;
+
     return (diffuse + specular) * intensity * attenuation;
 }
 
 void main()
 {
-    // define some constant properties for the light
-    // (you should really be passing these parameters into the shader as uniform vars instead)
-    vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);  // diffuse
-    float ambientIntensity = 0.15f;            // ambient
-    float specularIntensity = 2.0f;            // specular (better implementation: look this up from a specular map!)
-    float specularPower = 1024.0f;               // specular exponent
-
     // look up the normal from the normal map, then reorient it with the current model transform via the TBN matrix
     vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
     textureNormal = normalize(textureNormal * 2.0f - 1.0f);  // convert range from [0, 1] to [-1, 1]
@@ -111,12 +110,6 @@ void main()
     // directional light
     result += CalculateDirLight(dir_light, normalDir, viewDir);
 
-    // calculate specular
-    vec3 viewDir = normalize(-shaderPosition);
-    vec3 reflectDir = reflect(-lightDir, normalDir);
-
-    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
-    vec3 lightSpecular = pow(max(dot(reflectDir, viewDir), 0), specularPower) * lightColor * specularIntensity * textureSpecular;
     // spotlights
     for (int i = 0; i < 2; i++) {
         result += CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition);

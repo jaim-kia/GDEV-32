@@ -472,7 +472,7 @@ bool setup()
     texture[6] = gdevLoadTexture("tex-rainbow.png", GL_REPEAT, true, true);
     texture[7] = gdevLoadTexture("tex-fish.png", GL_REPEAT, true, true);
     texture[8] = gdevLoadTexture("TrainCartNormal.png", GL_REPEAT, true, true);
-    texture[9] = gdevLoadTexture("test.png", GL_REPEAT, true, true);
+    texture[9] = gdevLoadTexture("TrainCartSpecular.png", GL_REPEAT, true, true);
     if (! texture[0] || ! texture[1] || !texture[2]
         || !texture[3] || !texture[4] || !texture[5]
         || !texture[6] || !texture[7] || !texture[8] || !texture[9])
@@ -576,6 +576,9 @@ void render()
                  1, glm::value_ptr(main_light.diffuse));
     glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
                  1, glm::value_ptr(main_light.specular));
+    glUniform3fv(glGetUniformLocation(shader, "dir_light.color"),
+                 1, glm::value_ptr(main_light.color));
+    glUniform1f(glGetUniformLocation(shader, "dir_light.specular_exponent"), main_light.specular_exponent);
 
     for (int i = 0; i < 2; i++) {
         std::string base = "spotlights[" + std::to_string(i) + "].";
@@ -606,6 +609,9 @@ void render()
 
         glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
                      1, glm::value_ptr(spotlights[i].specular));
+        glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+                     1, glm::value_ptr(spotlights[i].color));
+        glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
     }
 
 
@@ -742,16 +748,34 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
     }
 
     if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
-        active_camera->fov += 30.0f * deltaTime;
-        if (active_camera->fov > 90.0f) {
-            active_camera->fov = 90.0f;
+        if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+            Light* light = active_camera->owner;
+            light->outer_cutoff += 30.0f * deltaTime;
+            if (light->outer_cutoff > 90.0f) {
+                light->outer_cutoff = 90.0f;
+            }
+        }
+        else {
+            active_camera->fov += 30.0f * deltaTime;
+            if (active_camera->fov > 90.0f) {
+                active_camera->fov = 90.0f;
+            }
         }
     }
 
     if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
-        active_camera->fov -= 30.0f * deltaTime;
-        if (active_camera->fov < 1.0f) {
-            active_camera->fov = 1.0f;
+        if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+            Light* light = active_camera->owner;
+            light->outer_cutoff -= 30.0f * deltaTime;
+            if (light->outer_cutoff < light->inner_cutoff) {
+                light->outer_cutoff = light->inner_cutoff;
+            }
+        }
+        else {
+            active_camera->fov -= 30.0f * deltaTime;
+            if (active_camera->fov < 1.0f) {
+                active_camera->fov = 1.0f;
+            }
         }
     }
     
