@@ -7,7 +7,8 @@
  * Press 1 to switch to main camera, 2 to switch to directional light camera;
  *  
  * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
- * the same set of keys to move the spotlight and mouse to adjust its direction; 
+ * the same set of keys to move the spotlight and mouse to adjust its direction;
+ * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle. 
  *****************************************************************************/
 
 #include <iostream>
@@ -448,7 +449,7 @@ bool setup()
     }
 
     // load our shader program
-    shader = gdevLoadShader("demo5n.vs", "demo5n.fs");
+    shader = gdevLoadShader("Exercise2-advanced.vs", "Exercise2-advanced.fs");
     simple_shader = gdevLoadShader("Exercise2-simple.vs", "Exercise2-simple.fs");
     if (!shader || !simple_shader) return false;
 
