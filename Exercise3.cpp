@@ -411,6 +411,112 @@ void setupLights() {
     }
 }
 
+bool setupShadowMaps()
+{
+    for (int i = 0; i < 2; i++) {
+        // create the FBO for rendering shadows
+        glGenFramebuffers(1, &shadowMapFbo[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFbo[i]);
+
+        // attach a texture object to the framebuffer
+        glGenTextures(1, &shadowMapTexture[i]);
+        glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTexture[i], 0);
+        
+        // check if we did everything right
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            std::cout << "Could not create custom framebuffer " << i << ".\n";
+            return false;
+        }
+    }
+
+    // load the shader program for drawing the shadow map
+    shadowMapShader = gdevLoadShader("Exercise3-shadow.vs", "Exercise3-shadow.fs");
+    if (! shadowMapShader)
+        return false;
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    return true;
+}
+
+glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light)
+{
+    // use the shadow framebuffer for drawing the shadow map
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFbo);
+
+    // the viewport should be the size of the shadow map
+    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+
+    // clear the shadow map
+    // (we don't have a color buffer attachment, so no need to clear that)
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // using the shadow map shader...
+    glUseProgram(shadowMapShader);
+
+    // ... set up the light space matrix...
+    // (note that if you use a spot light, the FOV and the center position
+    // vector should be set to the spot light's outer cone angle times 2
+    // and the spot light's focus point, respectively)
+    glm::mat4 lightTransform;
+    if (light.type == Light::SPOTLIGHT) {
+        lightTransform = glm::perspective(glm::radians(light.outer_cutoff * 2.0f),       // fov
+                                    1.0f,                      // aspect ratio
+                                    0.1f,                      // near plane
+                                    100.0f);                   // far plane
+        lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
+                                    light.getPosition() + light.getDirection(),   // center position
+                                    glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+    } else {
+        lightTransform = glm::perspective(glm::radians(90.0f),       // fov
+                                    1.0f,                      // aspect ratio
+                                    0.1f,                      // near plane
+                                    100.0f);                   // far plane
+        lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
+                                    glm::vec3(0.0f, 0.0f, 0.0f),   // center position
+                                    glm::vec3(0.0f, 1.0f, 0.0f));
+    }
+
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
+                       1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+    // ... then draw our triangles
+
+    // NOTE: draw JUST model geometry here, no textures
+
+    // train
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+
+    // water
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // before drawing the final scene, we need to set drawing to the whole window
+    int width, height;
+    glfwGetFramebufferSize(pWindow, &width, &height);
+    glViewport(0, 0, width, height);
+
+    // we will need the light transformation matrix again in the main rendering code
+    return lightTransform;
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -535,12 +641,21 @@ bool setup()
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
 
+    if ( !setupShadowMaps())
+        return false;
+
     return true;
 }
 
 // called by the main function to do rendering per frame
 void render()
 {
+    // draw shadow map
+    glm::mat4 lightTransforms[2];
+    for (int i = 0; i < 2; i++) {
+        lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], spotlights[i]);
+    }
+
     // clear the whole frame
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -621,20 +736,32 @@ void render()
         glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
     }
 
+    // send shadow data to shader
+    for (int i = 0; i < 2; i++) {
+        std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
+        glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+                        1, GL_FALSE, glm::value_ptr(lightTransforms[i]));
+
+        glActiveTexture(GL_TEXTURE3 + i);
+        glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
+
+        std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
+        glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+    }
 
     // Drawing Station
-    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
-    // ... set the active textures...
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[0]);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, texture[1]);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, texture[2]);
+    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    // // ... set the active textures...
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[0]);
+    // glActiveTexture(GL_TEXTURE1);
+    // glBindTexture(GL_TEXTURE_2D, texture[1]);
+    // glActiveTexture(GL_TEXTURE2);
+    // glBindTexture(GL_TEXTURE_2D, texture[2]);
 
-    // ... then draw our triangles
-    glBindVertexArray(vaos[0]);
-    glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
+    // // ... then draw our triangles
+    // glBindVertexArray(vaos[0]);
+    // glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
 
     // // Drawing Train
     // glUseProgram(shader);
@@ -657,35 +784,39 @@ void render()
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
 
-    // Floor:
-    glUseProgram(simple_shader);
-    float currentTime = (float)glfwGetTime();
-    glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
-    glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
-
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
-
-    glm::mat4 floorModel = glm::mat4(1.0f);
-    floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
-    floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
-    
-    glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(floorModel));
-    glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 1);
-
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[4]); 
-    glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, texture[5]);
-    glUniform1i(glGetUniformLocation(simple_shader, "shaderTextureSmoke"), 1);
-
+    glBindTexture(GL_TEXTURE_2D, texture[4]);
     glBindVertexArray(vaos[2]);
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+    // Floor:
+    // glUseProgram(simple_shader);
+    // float currentTime = (float)glfwGetTime();
+    // glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
+    // glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
 
-    glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
+    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    // // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
+
+    // glm::mat4 floorModel = glm::mat4(1.0f);
+    // floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
+    // floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
+    
+    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(floorModel));
+    // glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 1);
+
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[4]); 
+    // glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+
+    // glActiveTexture(GL_TEXTURE1);
+    // glBindTexture(GL_TEXTURE_2D, texture[5]);
+    // glUniform1i(glGetUniformLocation(simple_shader, "shaderTextureSmoke"), 1);
+
+    // glBindVertexArray(vaos[2]);
+    // glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+
+    // glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
 
     // cave:
     // glActiveTexture(GL_TEXTURE0);
