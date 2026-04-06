@@ -47,6 +47,8 @@ size_t data_sizes[5];
 
 double previousTime = 0.0;
 
+bool enableShadows = true;
+
 struct Light;
 
 struct Camera {
@@ -650,10 +652,13 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
+    std::cout << "shadows: " << enableShadows << std::endl;
     // draw shadow map
     glm::mat4 lightTransforms[2];
-    for (int i = 0; i < 2; i++) {
-        lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], spotlights[i]);
+    if (enableShadows) {
+        for (int i = 0; i < 2; i++) {
+            lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], spotlights[i]);
+        }
     }
 
     // clear the whole frame
@@ -736,17 +741,21 @@ void render()
         glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
     }
 
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
+
     // send shadow data to shader
-    for (int i = 0; i < 2; i++) {
-        std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
-        glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-                        1, GL_FALSE, glm::value_ptr(lightTransforms[i]));
-
-        glActiveTexture(GL_TEXTURE3 + i);
-        glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
-
-        std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
-        glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+    if (enableShadows) {
+        for (int i = 0; i < 2; i++) {
+            std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+                            1, GL_FALSE, glm::value_ptr(lightTransforms[i]));
+    
+            glActiveTexture(GL_TEXTURE3 + i);
+            glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
+    
+            std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
+            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+        }
     }
 
     // Drawing Station
@@ -869,105 +878,157 @@ void render()
 /*****************************************************************************/
 
 // input handling function for controlling the camera; called by the main function every frame
+// void processInput(GLFWwindow *pWindow, float deltaTime) {
+//     float cameraSpeed = 1.5f * deltaTime;
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+//         cameraSpeed *= 2.0f;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS) {
+//         active_camera->position += active_camera->front * cameraSpeed;
+//     } 
+    
+//     if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS) {
+//         active_camera->position += -active_camera->front * cameraSpeed;
+//     } 
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS) {
+//         active_camera->position += glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS) {
+//         active_camera->position += -glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS) {
+//         active_camera->position += active_camera->up * cameraSpeed;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS) {
+//         active_camera->position += -active_camera->up * cameraSpeed;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS) {
+//         active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
+//         active_camera->yaw = -90.0f;
+//         active_camera->pitch = 0.0f;
+//         active_camera->fov = 45.0f;
+//         active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
+//         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+//             Light* light = active_camera->owner;
+//             light->outer_cutoff += 30.0f * deltaTime;
+//             if (light->outer_cutoff > 90.0f) {
+//                 light->outer_cutoff = 90.0f;
+//             }
+//         }
+//         else {
+//             active_camera->fov += 30.0f * deltaTime;
+//             if (active_camera->fov > 90.0f) {
+//                 active_camera->fov = 90.0f;
+//             }
+//         }
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
+//         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+//             Light* light = active_camera->owner;
+//             light->outer_cutoff -= 30.0f * deltaTime;
+//             if (light->outer_cutoff < light->inner_cutoff) {
+//                 light->outer_cutoff = light->inner_cutoff;
+//             }
+//         }
+//         else {
+//             active_camera->fov -= 30.0f * deltaTime;
+//             if (active_camera->fov < 1.0f) {
+//                 active_camera->fov = 1.0f;
+//             }
+//         }
+//     }
+    
+//     if (glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS) {
+//         glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS) {
+//         glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS) {
+//         glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_1) == GLFW_PRESS) {
+//         active_camera = &main_camera;
+//     }
+    
+//     if (glfwGetKey(pWindow, GLFW_KEY_2) == GLFW_PRESS) {
+//         // active_camera = &main_light.cam;
+//     }
+
+//     if (glfwGetKey(pWindow, GLFW_KEY_3) == GLFW_PRESS) {
+//         active_camera = &spotlights[0].cam;
+//     }
+//     if (glfwGetKey(pWindow, GLFW_KEY_4) == GLFW_PRESS) {
+//         active_camera = &spotlights[1].cam;
+//     }
+//     // toggle shadows on/off
+//     if (glfwGetKey(pWindow, GLFW_KEY_5) == GLFW_PRESS) {
+//         enableShadows = !enableShadows;
+//     }
+
+
+// }
+
+// for continuosly checking if certain keys are pressed and moving the camera accordingly
 void processInput(GLFWwindow *pWindow, float deltaTime) {
     float cameraSpeed = 1.5f * deltaTime;
 
-    if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         cameraSpeed *= 2.0f;
-    }
 
-    if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS)
         active_camera->position += active_camera->front * cameraSpeed;
-    } 
-    
-    if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS) {
-        active_camera->position += -active_camera->front * cameraSpeed;
-    } 
 
-    if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS)
+        active_camera->position -= active_camera->front * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS)
         active_camera->position += glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
-    }
 
-    if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS) {
-        active_camera->position += -glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
-    }
+    if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS)
+        active_camera->position -= glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
 
-    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS)
         active_camera->position += active_camera->up * cameraSpeed;
-    }
 
-    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS) {
-        active_camera->position += -active_camera->up * cameraSpeed;
-    }
+    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS)
+        active_camera->position -= active_camera->up * cameraSpeed;
 
-    if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS) {
-        active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
-        active_camera->yaw = -90.0f;
-        active_camera->pitch = 0.0f;
-        active_camera->fov = 45.0f;
-        active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
-    }
-
-    if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS)
+    {
         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
             Light* light = active_camera->owner;
-            light->outer_cutoff += 30.0f * deltaTime;
-            if (light->outer_cutoff > 90.0f) {
-                light->outer_cutoff = 90.0f;
-            }
+            light->outer_cutoff = glm::min(light->outer_cutoff + 30.0f * deltaTime, 90.0f);
         }
         else {
-            active_camera->fov += 30.0f * deltaTime;
-            if (active_camera->fov > 90.0f) {
-                active_camera->fov = 90.0f;
-            }
+            active_camera->fov = glm::min(active_camera->fov + 30.0f * deltaTime, 90.0f);
         }
     }
 
-    if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
+    if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS)
+    {
         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
             Light* light = active_camera->owner;
-            light->outer_cutoff -= 30.0f * deltaTime;
-            if (light->outer_cutoff < light->inner_cutoff) {
-                light->outer_cutoff = light->inner_cutoff;
-            }
+            light->outer_cutoff = glm::max(light->outer_cutoff - 30.0f * deltaTime, light->inner_cutoff);
         }
         else {
-            active_camera->fov -= 30.0f * deltaTime;
-            if (active_camera->fov < 1.0f) {
-                active_camera->fov = 1.0f;
-            }
+            active_camera->fov = glm::max(active_camera->fov - 30.0f * deltaTime, 1.0f);
         }
     }
-    
-    if (glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS) {
-        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    }
-
-    if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS) {
-        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    }
-
-    if (glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS) {
-        glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
-    }
-
-    if (glfwGetKey(pWindow, GLFW_KEY_1) == GLFW_PRESS) {
-        active_camera = &main_camera;
-    }
-    
-    if (glfwGetKey(pWindow, GLFW_KEY_2) == GLFW_PRESS) {
-        // active_camera = &main_light.cam;
-    }
-
-    if (glfwGetKey(pWindow, GLFW_KEY_3) == GLFW_PRESS) {
-        active_camera = &spotlights[0].cam;
-    }
-    if (glfwGetKey(pWindow, GLFW_KEY_4) == GLFW_PRESS) {
-        active_camera = &spotlights[1].cam;
-    }
-
-
 }
 
 void mouse_callback(GLFWwindow* pWindow, double xpos, double ypos) {
@@ -1034,9 +1095,58 @@ void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
 // handler called by GLFW when there is a keyboard event
 void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)
 {
-    // pressing Esc closes the window
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(pWindow, GL_TRUE);
+    // // pressing Esc closes the window
+    // if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    //     glfwSetWindowShouldClose(pWindow, GL_TRUE);
+    
+    if (action != GLFW_PRESS) return;
+
+    switch (key)
+    {
+        case GLFW_KEY_ESCAPE:
+            glfwSetWindowShouldClose(pWindow, GL_TRUE);
+            break;
+
+        case GLFW_KEY_F:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            break;
+
+        case GLFW_KEY_L:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            break;
+
+        case GLFW_KEY_P:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+            break;
+
+        case GLFW_KEY_R:
+            active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
+            active_camera->yaw = -90.0f;
+            active_camera->pitch = 0.0f;
+            active_camera->fov = 45.0f;
+            active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
+            break;
+
+        case GLFW_KEY_1:
+            active_camera = &main_camera;
+            break;
+        
+        case GLFW_KEY_2:
+            // active_camera = &main_light.cam;
+            break;
+
+        case GLFW_KEY_3:
+            active_camera = &spotlights[0].cam;
+            break;
+
+        case GLFW_KEY_4:
+            active_camera = &spotlights[1].cam;
+            break;
+        case GLFW_KEY_5:
+            enableShadows = !enableShadows;
+            break;
+
+    }
 }
 
 // handler called by GLFW when the window is resized

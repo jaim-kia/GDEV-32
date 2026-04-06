@@ -38,6 +38,8 @@ uniform sampler2D normalMap;
 uniform sampler2D specularMap;
 uniform sampler2D shadowMaps[2];
 
+uniform bool enableShadows;
+
 uniform DirLight dir_light;
 uniform SpotLight spotlights[2];
 
@@ -144,10 +146,13 @@ void main()
     // spotlights
     for (int i = 0; i < 2; i++) {
         vec3 lighting = CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition);
-        float shadow = inShadowSpotlight(i) ? 0.0f : 1.0f;
         
-        // zero-out lighting if the fragment is in shadow
-        result += lighting * shadow;
+        if (enableShadows) {
+            // zero-out lighting if the fragment is in shadow
+            float visibility = inShadowSpotlight(i) ? 0.0f : 1.0f;
+            lighting *= visibility;
+        }
+        result += lighting;
     }
 
     result += ambient * vec3(texture(diffuseMap, shaderTexCoord));
