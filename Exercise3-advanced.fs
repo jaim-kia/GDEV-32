@@ -40,6 +40,7 @@ uniform sampler2D shadowMaps[2];
 
 uniform DirLight dir_light;
 uniform SpotLight spotlights[2];
+uniform vec2 shadowTexelStep;
 
 out vec4 fragmentColor;
 
@@ -90,7 +91,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     return (diffuse + specular) * intensity * attenuation;
 }
 
-bool inShadowSpotlight(int index)
+float inShadowSpotlight(int index)
 {
     // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
     vec3 position = shaderLightSpacePositions[index].xyz / shaderLightSpacePositions[index].w;
@@ -104,18 +105,35 @@ bool inShadowSpotlight(int index)
         || position.y < 0.0f || position.y > 1.0f
         || position.z < 0.0f || position.z > 1.0f)
     {
-        return true;
+        return 0.0f;
     }
 
     // access the shadow map at this position
-    float shadowMapZ = texture(shadowMaps[index], position.xy).r;
+    // float shadowMapZ = texture(shadowMaps[index], position.xy).r;
 
     // add a bias to prevent shadow acne
     float bias = 0.0005f;
-    shadowMapZ += bias;
+    // shadowMapZ += bias;
+    float shadow = 0.0f;
 
+    int kernelRadius = 2; // 1 is 3x3 2 is 5 and so on
+    int samples = 0;
+
+    for (int x = -kernelRadius; x <= kernelRadius; x++)
+    {
+        for (int y = -kernelRadius; y <= kernelRadius; y++)
+        {
+            // shift the pixel based on kernel
+            // shadowTexelStep converts offset from pixelunit (from kernel) to uv space (for texture)
+            float shadowMapZ = texture(shadowMaps[index], position.xy + vec2(x, y) * shadowTexelStep).r;
+            shadow += (shadowMapZ + bias < position.z) ? 0.0f : 1.0f;
+            samples++;
+        }
+    }
+
+    return shadow / float(samples); // 0.0 = fully in shadow, 1.0 = fully lit
     // if the depth stored in the texture is less than the current fragment's depth, we are in shadow
-    return shadowMapZ < position.z;
+    // return shadowMapZ < position.z;
     // return false;
 }
 
@@ -144,7 +162,7 @@ void main()
     // spotlights
     for (int i = 0; i < 2; i++) {
         vec3 lighting = CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition);
-        float shadow = inShadowSpotlight(i) ? 0.0f : 1.0f;
+        float shadow = inShadowSpotlight(i);
         
         // zero-out lighting if the fragment is in shadow
         result += lighting * shadow;

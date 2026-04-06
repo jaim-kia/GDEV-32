@@ -747,6 +747,7 @@ void render()
 
         std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+        glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
     }
 
     // Drawing Station
