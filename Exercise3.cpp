@@ -427,6 +427,7 @@ void setupLights() {
         switch (light->type) {
             case Light::DIRECTIONAL:
                 light->cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
+                light->cam.position = glm::vec3(0.0f, 40.0f, 5.0f);
                 break;
             case Light::SPOTLIGHT:
                 light->inner_cutoff = 12.0f;
@@ -525,79 +526,6 @@ void drawSceneGeometry() {
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 }
 
-glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light) {
-    // use the shadow framebuffer for drawing the shadow map
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFbo);
-
-    // the viewport should be the size of the shadow map
-    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
-
-    // clear the shadow map
-    // (we don't have a color buffer attachment, so no need to clear that)
-    glClear(GL_DEPTH_BUFFER_BIT);
-
-    // using the shadow map shader...
-    glUseProgram(shadowMapShader);
-
-    // ... set up the light space matrix...
-    // (note that if you use a spot light, the FOV and the center position
-    // vector should be set to the spot light's outer cone angle times 2
-    // and the spot light's focus point, respectively)
-    glm::mat4 lightTransform;
-    if (light.type == Light::SPOTLIGHT) {
-        lightTransform = glm::perspective(glm::radians(light.outer_cutoff * 2.0f),       // fov
-                                    1.0f,                      // aspect ratio
-                                    0.1f,                      // near plane
-                                    100.0f);                   // far plane
-        lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
-                                    light.getPosition() + light.getDirection(),   // center position
-                                    glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
-    } 
-    else if (light.type == Light::DIRECTIONAL) {
-        // lightTransform = glm::perspective(glm::radians(90.0f),       // fov
-        //                             1.0f,                      // aspect ratio
-        //                             0.1f,                      // near plane
-        //                             100.0f);                   // far plane
-        // lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
-        //                             glm::vec3(0.0f, 0.0f, 0.0f),   // center position
-        //                             glm::vec3(0.0f, 1.0f, 0.0f));
-
-    }
-
-    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
-                       1, GL_FALSE, glm::value_ptr(lightTransform));
-
-    // ... set up the model matrix... (just identity for this demo)
-    glm::mat4 modelTransform = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
-                       1, GL_FALSE, glm::value_ptr(modelTransform));
-
-    // ... then draw our triangles
-
-    // NOTE: draw JUST model geometry here, no textures
-
-    // train
-    glBindVertexArray(vaos[1]);
-    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
-
-    // water
-    glBindVertexArray(vaos[2]);
-    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
-
-
-    // set the framebuffer back to the default onscreen buffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // before drawing the final scene, we need to set drawing to the whole window
-    int width, height;
-    glfwGetFramebufferSize(pWindow, &width, &height);
-    glViewport(0, 0, width, height);
-
-    // we will need the light transformation matrix again in the main rendering code
-    return lightTransform;
-}
-
-// Directional shadow rendering (orthographic)
 void renderDirectionalShadows(int index, Light& light) {
     // use the shadow framebuffer for drawing the shadow map
     glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[index]);
@@ -615,8 +543,8 @@ void renderDirectionalShadows(int index, Light& light) {
     // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
     glm::mat4 lightTransform;
     lightTransform = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 100.0f) * 
-                    glm::lookAt(light.getPosition(),                 // eye position
-                                glm::vec3(0.0f, 0.0f, 0.0f),   // center position
+                    glm::lookAt(light.getPosition(),           // light position
+                                glm::vec3(0.0f, 0.0f, 0.0f),   // scene center
                                 glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
 
     glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
