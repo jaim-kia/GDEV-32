@@ -129,6 +129,9 @@ std::vector<glm::mat4> spotLightTransforms;
 
 GLuint shadowMapShader;   // shadow map shader
 
+GLuint offsetTexture; // noise texture for PCF sampling
+#define PI 3.14159265358979323846f
+
 // std::vector<GLuint> shadowMapFbo;
 // std::vector<GLuint> shadowMapTexture;
 // GLuint shadowMapShader; 
@@ -541,8 +544,9 @@ void renderDirectionalShadows(int index, Light& light) {
     glUseProgram(shadowMapShader);
 
     // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
+    float bounds = 10.0f;
     glm::mat4 lightTransform;
-    lightTransform = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 100.0f) * 
+    lightTransform = glm::ortho(-bounds, bounds, -bounds, bounds, 0.1f, 100.0f) * 
                     glm::lookAt(light.getPosition(),           // light position
                                 glm::vec3(0.0f, 0.0f, 0.0f),   // scene center
                                 glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
@@ -608,6 +612,76 @@ void renderSpotShadows(int index, Light& light) {
 
 }
 
+float randomFloat(float min, float max) {
+    return min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+}
+
+std::vector<float> data;
+
+// for pcf with random sampling
+void generateOffsetTextureData(int windowSize, int filterSize, std::vector<float>& data) {
+    
+    int bufferSize = windowSize * windowSize * filterSize * filterSize * 2; 
+    int numFilterSamples = filterSize * filterSize;
+    data.resize(bufferSize);
+
+    int index = 0;
+
+    for (int texY = 0; texY < windowSize; ++texY) {
+        for (int texX = 0; texX < windowSize; ++texX) {
+            for (int i = 0; i < numFilterSamples / 2; ++i) {
+                // generate sample 2*i
+                int sampleIndex = 2 * i;
+                int u = sampleIndex % filterSize;
+                int v = sampleIndex / filterSize;
+                float x = ((float)u + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float y = ((float)v + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float x1 = sqrtf(y) * cosf(2.0f * PI * x);
+                float y1 = sqrtf(y) * sinf(2.0f * PI * x);
+
+                // generate sample 2*i+1
+                sampleIndex = 2 * i + 1;
+                u = sampleIndex % filterSize;
+                v = sampleIndex / filterSize;
+                x = ((float)u + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                y = ((float)v + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float x2 = sqrtf(y) * cosf(2.0f * PI * x);
+                float y2 = sqrtf(y) * sinf(2.0f * PI * x);
+
+                data[index++] = x1;
+                data[index++] = y1;
+                data[index++] = x2;
+                data[index++] = y2;
+            }
+        }
+    }
+}
+
+void createTexture(int windowSize, int filterSize, const std::vector<float>& data) {
+    int numFilterSamples = filterSize * filterSize;
+
+    glActiveTexture(GL_TEXTURE0 + 12); // using texture unit 12 for the offset texture
+    glGenTextures(1, &offsetTexture);
+    glBindTexture(GL_TEXTURE_3D, offsetTexture);
+    glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA32F, numFilterSamples / 2, windowSize, windowSize);
+    // glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, data.data());
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, &data[0]);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_3D, 0);
+
+}
+
+void setupPCF() {
+    int windowSize = 12;
+    int filterSize = 7;
+
+    std::vector<float> offsetData;
+    generateOffsetTextureData(windowSize, filterSize, offsetData);
+    createTexture(windowSize, filterSize, offsetData);
+
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -659,7 +733,10 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
-    // glUniform1i(glGetUniformLocation(shader, "shadowMap"),  3);
+    glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
+    glUniform1f(glGetUniformLocation(shader, "radius"), 6.0f);
+    glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
 
     glUseProgram(simple_shader);
     glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
@@ -735,6 +812,9 @@ bool setup()
 
     if ( !setupShadowMaps())
         return false;
+    
+    // for pcf with random sampling
+    setupPCF();
 
     return true;
 }
@@ -887,6 +967,11 @@ void render()
         }
 
         glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+        glActiveTexture(GL_TEXTURE0 + 12);
+        glBindTexture(GL_TEXTURE_3D, offsetTexture);
+
+        glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
     }
 
     // Drawing Station
