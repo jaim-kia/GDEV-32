@@ -47,8 +47,6 @@ size_t data_sizes[5];
 
 double previousTime = 0.0;
 
-bool enableShadows = true;
-
 struct Light;
 
 struct Camera {
@@ -105,8 +103,6 @@ struct Light {
 
 Camera main_camera;
 
-const int NUM_LIGHTS = 3;
-
 Light main_light = Light(Light::DIRECTIONAL);
 Light spotlight1 = Light(Light::SPOTLIGHT);
 Light spotlight2 = Light(Light::SPOTLIGHT);
@@ -121,9 +117,23 @@ float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
 #define SHADOW_SIZE 1024
-GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
-GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
+// GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
+// GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
+std::vector<GLuint> directionalShadowFbos;
+std::vector<GLuint> directionalShadowTextures;
+std::vector<glm::mat4> directionalLightTransforms;
+
+std::vector<GLuint> spotShadowFbos;
+std::vector<GLuint> spotShadowTextures;
+std::vector<glm::mat4> spotLightTransforms;
+
 GLuint shadowMapShader;   // shadow map shader
+
+// std::vector<GLuint> shadowMapFbo;
+// std::vector<GLuint> shadowMapTexture;
+// GLuint shadowMapShader; 
+
+bool enableShadows = true;
 
 /*------------------FISH--------------------*/
 
@@ -431,19 +441,53 @@ void setupLights() {
 
 bool setupShadowMaps()
 {
-    for (int i = 0; i < 2; i++) {
-        // create the FBO for rendering shadows
-        glGenFramebuffers(1, &shadowMapFbo[i]);
-        glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFbo[i]);
+    int numDir = 0, numSpot = 0, numPoint = 0;
+    for (auto* light : lights) {
+        if (light->type == Light::DIRECTIONAL) numDir++;
+        else if (light->type == Light::SPOTLIGHT) numSpot++;
+
+        std::cout << light->type << std::endl;
+        
+        // else if (light->type == Light::POINT) numPoint++;
+    }
+
+    // resizing vectors
+    directionalShadowFbos.resize(numDir);
+    directionalShadowTextures.resize(numDir);
+    directionalLightTransforms.resize(numDir);
+
+    spotShadowFbos.resize(numSpot);
+    spotShadowTextures.resize(numSpot);
+    spotLightTransforms.resize(numSpot);
+    
+    std::cout << "resize done" << std::endl;
+    std::cout << numDir << std::endl;
+    std::cout << numSpot << std::endl;
+
+    std::cout << directionalShadowFbos.size() << std::endl;
+    std::cout << directionalShadowTextures.size() << std::endl;
+    std::cout << directionalLightTransforms.size() << std::endl;
+
+    std::cout << spotShadowFbos.size() << std::endl;
+    std::cout << spotShadowTextures.size() << std::endl;
+    std::cout << spotLightTransforms.size() << std::endl;
+    std::cout << "end check" << std::endl;
+
+    // TODO: point lights lol
+
+    // directional lights 
+    for (int i = 0; i < numDir; i++) {
+        glGenFramebuffers(1, &directionalShadowFbos[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[i]);
 
         // attach a texture object to the framebuffer
-        glGenTextures(1, &shadowMapTexture[i]);
-        glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
+        glGenTextures(1, &directionalShadowTextures[i]);
+        glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMapTexture[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, directionalShadowTextures[i], 0);
         
         // check if we did everything right
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -451,6 +495,31 @@ bool setupShadowMaps()
             std::cout << "Could not create custom framebuffer " << i << ".\n";
             return false;
         }
+        std::cout << "dir lights" << std::endl;
+
+    }
+
+    // spotlights
+    for (int i = 0; i < numSpot; i++) {
+        glGenFramebuffers(1, &spotShadowFbos[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[i]);
+
+        // attach a texture object to the framebuffer
+        glGenTextures(1, &spotShadowTextures[i]);
+        glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, spotShadowTextures[i], 0);
+        
+        // check if we did everything right
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            std::cout << "Could not create custom framebuffer " << i << ".\n";
+            return false;
+        }
+        std::cout << "spot lights" << std::endl;
     }
 
     // load the shader program for drawing the shadow map
@@ -462,10 +531,22 @@ bool setupShadowMaps()
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     return true;
+
 }
 
-glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light)
-{
+void drawSceneGeometry() {
+    // train
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+    
+    // water
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+    
+    // std::cout << "draw scene" << std::endl;
+}
+
+glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light) {
     // use the shadow framebuffer for drawing the shadow map
     glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFbo);
 
@@ -492,14 +573,16 @@ glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light)
         lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
                                     light.getPosition() + light.getDirection(),   // center position
                                     glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
-    } else {
-        lightTransform = glm::perspective(glm::radians(90.0f),       // fov
-                                    1.0f,                      // aspect ratio
-                                    0.1f,                      // near plane
-                                    100.0f);                   // far plane
-        lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
-                                    glm::vec3(0.0f, 0.0f, 0.0f),   // center position
-                                    glm::vec3(0.0f, 1.0f, 0.0f));
+    } 
+    else if (light.type == Light::DIRECTIONAL) {
+        // lightTransform = glm::perspective(glm::radians(90.0f),       // fov
+        //                             1.0f,                      // aspect ratio
+        //                             0.1f,                      // near plane
+        //                             100.0f);                   // far plane
+        // lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
+        //                             glm::vec3(0.0f, 0.0f, 0.0f),   // center position
+        //                             glm::vec3(0.0f, 1.0f, 0.0f));
+
     }
 
     glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
@@ -533,6 +616,113 @@ glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light)
 
     // we will need the light transformation matrix again in the main rendering code
     return lightTransform;
+}
+
+// Directional shadow rendering (orthographic)
+void renderDirectionalShadows(int index, Light& light) {
+    // use the shadow framebuffer for drawing the shadow map
+    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[index]);
+
+    // the viewport should be the size of the shadow map
+    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+
+    // clear the shadow map
+    // (we don't have a color buffer attachment, so no need to clear that)
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // using the shadow map shader...
+    glUseProgram(shadowMapShader);
+
+    // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
+    glm::mat4 lightTransform;
+    lightTransform = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 100.0f) * 
+                    glm::lookAt(light.getPosition(),                 // eye position
+                                glm::vec3(0.0f, 0.0f, 0.0f),   // center position
+                                glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
+                       1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+        // train
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+    
+    // water
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+    
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    spotLightTransforms[index] = lightTransform;
+
+    // before drawing the final scene, we need to set drawing to the whole window
+    // int width, height;
+    // glfwGetFramebufferSize(pWindow, &width, &height);
+    // glViewport(0, 0, width, height);
+
+    // std::cout << "render dir lights" << std::endl;
+
+}
+
+
+void renderSpotShadows(int index, Light& light) {
+    // use the shadow framebuffer for drawing the shadow map
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[index]);
+
+    // the viewport should be the size of the shadow map
+    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+
+    // clear the shadow map
+    // (we don't have a color buffer attachment, so no need to clear that)
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // using the shadow map shader...
+    glUseProgram(shadowMapShader);
+
+    // ... set up the light space matrix... FOR SPOTLIGHTS
+    glm::mat4 lightTransform;
+    lightTransform = glm::perspective(glm::radians(light.outer_cutoff * 2.0f),       // fov
+                                1.0f,                      // aspect ratio
+                                0.1f,                      // near plane
+                                100.0f);                   // far plane
+    lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
+                                light.getPosition() + light.getDirection(),   // center position
+                                glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
+                       1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+    // train
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
+    
+    // water
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+    
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    directionalLightTransforms[index] = lightTransform;
+
+    // before drawing the final scene, we need to set drawing to the whole window
+    // int width, height;
+    // glfwGetFramebufferSize(pWindow, &width, &height);
+    // glViewport(0, 0, width, height);
+    // std::cout << "render spot lights" << std::endl;
 }
 
 // called by the main function to do initial setup, such as uploading vertex
@@ -586,6 +776,7 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
+    // glUniform1i(glGetUniformLocation(shader, "shadowMap"),  3);
 
     glUseProgram(simple_shader);
     glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
@@ -668,12 +859,19 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
-    std::cout << "shadows: " << enableShadows << std::endl;
     // draw shadow map
-    glm::mat4 lightTransforms[NUM_LIGHTS];
     if (enableShadows) {
-        for (int i = 0; i < NUM_LIGHTS; i++) {
-            lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], *lights[i]);
+        int dirIdx = 0, spotIdx = 0;
+        for (auto* light : lights) {
+            if (light->type == Light::DIRECTIONAL) {
+                renderDirectionalShadows(dirIdx++, *light);
+            } 
+            else if (light->type == Light::SPOTLIGHT) {
+                renderSpotShadows(spotIdx++, *light);
+            } 
+            else if (light->type == Light::POINT) {
+                // TODO: lol
+            }
         }
     }
 
@@ -807,22 +1005,52 @@ void render()
     //     glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
     // }
 
-    glUniform1i(glGetUniformLocation(shader, "numLights"), NUM_LIGHTS);
+    // glUniform1i(glGetUniformLocation(shader, "numLights"), allLightTransforms.size());
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
 
     // send shadow data to shader
+    // if (enableShadows) {
+    //     for (int i = 0; i < allLightTransforms.size(); i++) {
+    //         std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
+    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+    //                         1, GL_FALSE, glm::value_ptr(allLightTransforms[i]));
+    
+    //         glActiveTexture(GL_TEXTURE3 + i);
+    //         glBindTexture(GL_TEXTURE_2D, allShadowTextures[i]);
+    
+    //         std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
+    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+    //     }
+    // }
+
     if (enableShadows) {
-        for (int i = 0; i < NUM_LIGHTS; i++) {
-            std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
+        // directional lights
+        for (int i = 0; i < directionalLightTransforms.size(); i++) {
+            std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
             glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-                            1, GL_FALSE, glm::value_ptr(lightTransforms[i]));
+                            1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
     
             glActiveTexture(GL_TEXTURE3 + i);
-            glBindTexture(GL_TEXTURE_2D, shadowMapTexture[i]);
+            glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
     
-            std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
+            std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
+            // glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
             glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
         }
+        // spotlights
+        // for (int i = 0; i < spotLightTransforms.size(); i++) {
+        //     std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
+        //     glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+        //                     1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+    
+        //     glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
+        //     glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+    
+        //     std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
+        //     // glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
+        //     glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
+        // }
+
     }
 
     // Drawing Station
