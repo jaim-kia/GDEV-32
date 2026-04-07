@@ -162,7 +162,7 @@ void main() {
     // average of ambient light of all light sources
     vec3 ambient = vec3(0.0f);
     for (int i = 0; i < 1; i++) {
-        // ambient += dir_lights[i].ambient;
+        ambient += dir_lights[i].ambient;
     }
     for (int i = 0; i < 2; i++) {
         ambient += spotlights[i].ambient;
@@ -186,13 +186,15 @@ void main() {
         
         if (enableShadows) {
             // zero-out lighting if the fragment is in shadow
-            float visibility = inShadowSpotlight(i + 1) ? 0.0f : 1.0f;
+            float visibility = inShadowSpotlight(i) ? 0.0f : 1.0f;
             lighting *= visibility;
         }
         result += lighting;
     }
 
-    result += vec3(texture(diffuseMap, shaderTexCoord));
+    vec3 diffuseColor = vec3(texture(diffuseMap, shaderTexCoord));
+    result += ambient * diffuseColor;
+    result += diffuseColor * 0.2f;
     // result += vec3(texture(diffuseMap, shaderTexCoord));
 
     // result = vec3(0.5f);

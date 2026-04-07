@@ -441,13 +441,10 @@ void setupLights() {
 
 bool setupShadowMaps()
 {
-    int numDir = 0, numSpot = 0, numPoint = 0;
+    int numDir = 0, numSpot = 0 /*, numPoint = 0*/;
     for (auto* light : lights) {
         if (light->type == Light::DIRECTIONAL) numDir++;
         else if (light->type == Light::SPOTLIGHT) numSpot++;
-
-        std::cout << light->type << std::endl;
-        
         // else if (light->type == Light::POINT) numPoint++;
     }
 
@@ -460,19 +457,6 @@ bool setupShadowMaps()
     spotShadowTextures.resize(numSpot);
     spotLightTransforms.resize(numSpot);
     
-    std::cout << "resize done" << std::endl;
-    std::cout << numDir << std::endl;
-    std::cout << numSpot << std::endl;
-
-    std::cout << directionalShadowFbos.size() << std::endl;
-    std::cout << directionalShadowTextures.size() << std::endl;
-    std::cout << directionalLightTransforms.size() << std::endl;
-
-    std::cout << spotShadowFbos.size() << std::endl;
-    std::cout << spotShadowTextures.size() << std::endl;
-    std::cout << spotLightTransforms.size() << std::endl;
-    std::cout << "end check" << std::endl;
-
     // TODO: point lights lol
 
     // directional lights 
@@ -495,8 +479,6 @@ bool setupShadowMaps()
             std::cout << "Could not create custom framebuffer " << i << ".\n";
             return false;
         }
-        std::cout << "dir lights" << std::endl;
-
     }
 
     // spotlights
@@ -519,7 +501,6 @@ bool setupShadowMaps()
             std::cout << "Could not create custom framebuffer " << i << ".\n";
             return false;
         }
-        std::cout << "spot lights" << std::endl;
     }
 
     // load the shader program for drawing the shadow map
@@ -542,8 +523,6 @@ void drawSceneGeometry() {
     // water
     glBindVertexArray(vaos[2]);
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
-    
-    // std::cout << "draw scene" << std::endl;
 }
 
 glm::mat4 renderShadowMaps(GLuint shadowMapFbo, Light &light) {
@@ -648,26 +627,12 @@ void renderDirectionalShadows(int index, Light& light) {
     glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
-        // train
-    glBindVertexArray(vaos[1]);
-    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
-    
-    // water
-    glBindVertexArray(vaos[2]);
-    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
-    
+    drawSceneGeometry();
 
     // set the framebuffer back to the default onscreen buffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    spotLightTransforms[index] = lightTransform;
-
-    // before drawing the final scene, we need to set drawing to the whole window
-    // int width, height;
-    // glfwGetFramebufferSize(pWindow, &width, &height);
-    // glViewport(0, 0, width, height);
-
-    // std::cout << "render dir lights" << std::endl;
+    directionalLightTransforms[index] = lightTransform;
 
 }
 
@@ -704,25 +669,15 @@ void renderSpotShadows(int index, Light& light) {
     glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
-    // train
-    glBindVertexArray(vaos[1]);
-    glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
-    
-    // water
-    glBindVertexArray(vaos[2]);
-    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
-    
+    drawSceneGeometry();
 
     // set the framebuffer back to the default onscreen buffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    directionalLightTransforms[index] = lightTransform;
+    spotLightTransforms[index] = lightTransform;
+    
 
-    // before drawing the final scene, we need to set drawing to the whole window
-    // int width, height;
-    // glfwGetFramebufferSize(pWindow, &width, &height);
-    // glViewport(0, 0, width, height);
-    // std::cout << "render spot lights" << std::endl;
+
 }
 
 // called by the main function to do initial setup, such as uploading vertex
@@ -875,6 +830,11 @@ void render()
         }
     }
 
+    // before drawing the final scene, we need to set drawing to the whole window
+    int width, height;
+    glfwGetFramebufferSize(pWindow, &width, &height);
+    glViewport(0, 0, width, height);
+
     // clear the whole frame
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -913,17 +873,17 @@ void render()
         switch (light->type) {
             case Light::DIRECTIONAL: {
                 glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
-                glUniform3fv(glGetUniformLocation(shader, "dir_light.direction"),
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
                             1, glm::value_ptr(viewDir));
-                glUniform3fv(glGetUniformLocation(shader, "dir_light.ambient"),
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
                             1, glm::value_ptr(light->ambient));
-                glUniform3fv(glGetUniformLocation(shader, "dir_light.diffuse"),
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
                             1, glm::value_ptr(light->diffuse));
-                glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
                             1, glm::value_ptr(light->specular));
-                glUniform3fv(glGetUniformLocation(shader, "dir_light.color"),
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
                             1, glm::value_ptr(light->color));
-                glUniform1f(glGetUniformLocation(shader, "dir_light.specular_exponent"), light->specular_exponent);
+                glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), light->specular_exponent);
                 break;
             }
             case Light::SPOTLIGHT: {
@@ -969,63 +929,12 @@ void render()
         }
     }
     
-    
 
-    // for (int i = 0; i < 2; i++) {
-    //     std::string base = "spotlights[" + std::to_string(i) + "].";
-        
-    //     glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i].getPosition(), 1.0));
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
-    //                 1, glm::value_ptr(posView));
-
-    //     glm::vec3 dirView = glm::mat3(viewTransform) * spotlights[i].getDirection();
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
-    //                 1, glm::value_ptr(dirView));
-
-    //     glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].inner_cutoff)));
-        
-    //     glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].outer_cutoff)));
-        
-    //     glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), spotlights[i].constant);
-        
-    //     glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), spotlights[i].linear);
-        
-    //     glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), spotlights[i].quadratic);
-
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
-    //                  1, glm::value_ptr(spotlights[i].ambient));
-
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
-    //                  1, glm::value_ptr(spotlights[i].diffuse));
-
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
-    //                  1, glm::value_ptr(spotlights[i].specular));
-    //     glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
-    //                  1, glm::value_ptr(spotlights[i].color));
-    //     glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
-    // }
-
-    // glUniform1i(glGetUniformLocation(shader, "numLights"), allLightTransforms.size());
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
-
-    // send shadow data to shader
-    // if (enableShadows) {
-    //     for (int i = 0; i < allLightTransforms.size(); i++) {
-    //         std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
-    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-    //                         1, GL_FALSE, glm::value_ptr(allLightTransforms[i]));
-    
-    //         glActiveTexture(GL_TEXTURE3 + i);
-    //         glBindTexture(GL_TEXTURE_2D, allShadowTextures[i]);
-    
-    //         std::string shadowMapName = "shadowMaps[" + std::to_string(i) + "]";
-    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
-    //     }
-    // }
 
     if (enableShadows) {
         // directional lights
-        for (int i = 0; i < directionalLightTransforms.size(); i++) {
+        for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
             std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
             glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
                             1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
@@ -1034,23 +943,20 @@ void render()
             glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
     
             std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
-            // glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
             glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
         }
         // spotlights
-        // for (int i = 0; i < spotLightTransforms.size(); i++) {
-        //     std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
-        //     glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-        //                     1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+        for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+            std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+                            1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
     
-        //     glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
-        //     glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+            glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
+            glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
     
-        //     std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
-        //     // glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
-        //     glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
-        // }
-
+            std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
+            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
+        }
     }
 
     // Drawing Station
