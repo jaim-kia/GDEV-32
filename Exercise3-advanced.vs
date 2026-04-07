@@ -6,16 +6,22 @@ layout (location = 2) in vec3 vertexNormal;
 layout (location = 3) in vec3 vertexTangent;
 layout (location = 4) in mat4 instanceMatrix;  
 
+// uniform int numLights;
+
 uniform mat4 projectionTransform;
 uniform mat4 viewTransform;
 uniform mat4 modelTransform;
-uniform mat4 lightTransforms[2];
+// uniform mat4 lightTransforms[MAX_LIGHTS];
 uniform bool isInstanced;
+
+uniform mat4 directionalLightTransforms[1];
+uniform mat4 spotLightTransforms[2];
 
 out vec3 shaderPosition;
 out mat3 shaderTBN;
 out vec2 shaderTexCoord;
-out vec4 shaderLightSpacePositions[2];
+out vec4 dirLightSpacePositions[1];
+out vec4 spotLightSpacePositions[2];
 
 void main()
 {
@@ -45,7 +51,11 @@ void main()
     // to correctly determine where the fragments of the triangle actually go on the screen
     gl_Position = projectionTransform * vec4(shaderPosition, 1.0f);
 
+    for (int i = 0; i < 1; i++) {
+        dirLightSpacePositions[i] = directionalLightTransforms[i] * finalModel * vec4(vertexPosition, 1.0f);
+    }
+
     for (int i = 0; i < 2; i++) {
-        shaderLightSpacePositions[i] = lightTransforms[i] * finalModel * vec4(vertexPosition, 1.0f);
+        spotLightSpacePositions[i] = spotLightTransforms[i] * finalModel * vec4(vertexPosition, 1.0f);
     }
 }

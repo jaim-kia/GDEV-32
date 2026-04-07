@@ -31,14 +31,18 @@ struct SpotLight {
 in vec3 shaderPosition;
 in mat3 shaderTBN;
 in vec2 shaderTexCoord;
-in vec4 shaderLightSpacePositions[2];
+in vec4 dirLightSpacePositions[1];
+in vec4 spotLightSpacePositions[2];
 
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
 uniform sampler2D specularMap;
-uniform sampler2D shadowMaps[2];
+uniform sampler2D directionalShadowTextures[1];
+uniform sampler2D spotShadowTextures[2];
 
-uniform DirLight dir_light;
+uniform bool enableShadows;
+
+uniform DirLight dir_lights[1];
 uniform SpotLight spotlights[2];
 uniform vec2 shadowTexelStep;
 
@@ -94,7 +98,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
 float inShadowSpotlight(int index)
 {
     // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
-    vec3 position = shaderLightSpacePositions[index].xyz / shaderLightSpacePositions[index].w;
+    vec3 position = spotLightSpacePositions[index].xyz / spotLightSpacePositions[index].w;
     position = position * 0.5f + 0.5f;
 
     // if the position is outside the light-space frustum, do NOT put the
@@ -137,8 +141,7 @@ float inShadowSpotlight(int index)
     // return false;
 }
 
-void main()
-{
+void main() {
     // look up the normal from the normal map, then reorient it with the current model transform via the TBN matrix
     vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
     textureNormal = normalize(textureNormal * 2.0f - 1.0f);  // convert range from [0, 1] to [-1, 1]
@@ -150,27 +153,43 @@ void main()
 
     // average of ambient light of all light sources
     vec3 ambient = vec3(0.0f);
-    ambient += dir_light.ambient;
+    for (int i = 0; i < 1; i++) {
+        ambient += dir_lights[i].ambient;
+    }
     for (int i = 0; i < 2; i++) {
         ambient += spotlights[i].ambient;
     }
     ambient /= 3.0f; // average the ambient light contributions
     
     // directional light
-    // result += CalculateDirLight(dir_light, normalDir, viewDir);
+    for (int i = 0; i < 1; i++) {
+        vec3 lighting = CalculateDirLight(dir_lights[i], normalDir, viewDir);
+        
+        if (enableShadows) {
+            float visibility = inShadowDirLight(i) ? 0.0f : 1.0f;
+            lighting *= visibility;
+        }
+        result += lighting;
+    }
 
     // spotlights
     for (int i = 0; i < 2; i++) {
         vec3 lighting = CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition);
         float shadow = inShadowSpotlight(i);
         
-        // zero-out lighting if the fragment is in shadow
-        result += lighting * shadow;
+        if (enableShadows) {
+            // zero-out lighting if the fragment is in shadow
+            float visibility = inShadowSpotlight(i) ? 0.0f : 1.0f;
+            lighting *= visibility;
+        }
+        result += lighting;
     }
 
-    result += ambient * vec3(texture(diffuseMap, shaderTexCoord));
+    vec3 diffuseColor = vec3(texture(diffuseMap, shaderTexCoord));
+    result += ambient * diffuseColor;
+    result += diffuseColor * 0.2f;
+    // result += vec3(texture(diffuseMap, shaderTexCoord));
 
-
+    // result = vec3(0.5f);
     fragmentColor = vec4(result, 1.0f);
-
 }
