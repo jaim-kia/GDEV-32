@@ -91,6 +91,10 @@ struct Light {
         cam.owner = this;
     }
 
+    Light(Type t) : type(t) {
+        cam.owner = this;
+    }
+
     glm::vec3 getPosition() {
         return cam.position;
     }
@@ -100,8 +104,14 @@ struct Light {
 };
 
 Camera main_camera;
-// Light main_light;
-Light spotlights[2];
+
+const int NUM_LIGHTS = 3;
+
+Light main_light = Light(Light::DIRECTIONAL);
+Light spotlight1 = Light(Light::SPOTLIGHT);
+Light spotlight2 = Light(Light::SPOTLIGHT);
+
+std::vector<Light*> lights = {&main_light, &spotlight1, &spotlight2};
 
 Camera* active_camera = &main_camera;
 
@@ -111,8 +121,8 @@ float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
 #define SHADOW_SIZE 1024
-GLuint shadowMapFbo[2];      // shadow map framebuffer object
-GLuint shadowMapTexture[2];  // shadow map texture
+GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
+GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
 GLuint shadowMapShader;   // shadow map shader
 
 /*------------------FISH--------------------*/
@@ -403,13 +413,19 @@ void readModelData(std::vector<float> &array, const char* filename) {
 }
 
 void setupLights() {
-    // main_light.cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
-    for (int i = 0; i < 2; i++) {
-        // spotlights[i].cam.position = glm::vec3(0.f, 5.0f, -5.0f + i * 10.0f);
-        // spotlights[i].cam.front = glm::vec3(0.0f, -1.0f, 0.0f);
-        spotlights[i].type = Light::SPOTLIGHT;
-        spotlights[i].inner_cutoff = 12.0f;
-        spotlights[i].outer_cutoff = 17.0f;
+    for (const auto &light : lights) {
+        switch (light->type) {
+            case Light::DIRECTIONAL:
+                light->cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
+                break;
+            case Light::SPOTLIGHT:
+                light->inner_cutoff = 12.0f;
+                light->outer_cutoff = 17.0f;
+                break;
+            case Light::POINT:
+                // todo lol
+                break;
+        }
     }
 }
 
@@ -654,10 +670,10 @@ void render()
 {
     std::cout << "shadows: " << enableShadows << std::endl;
     // draw shadow map
-    glm::mat4 lightTransforms[2];
+    glm::mat4 lightTransforms[NUM_LIGHTS];
     if (enableShadows) {
-        for (int i = 0; i < 2; i++) {
-            lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], spotlights[i]);
+        for (int i = 0; i < NUM_LIGHTS; i++) {
+            lightTransforms[i] = renderShadowMaps(shadowMapFbo[i], *lights[i]);
         }
     }
 
@@ -693,59 +709,110 @@ void render()
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
    
-    // ... set up the light position...
-    // glm::vec3 viewDir = glm::mat3(viewTransform) * main_light.getDirection();
-    // glUniform3fv(glGetUniformLocation(shader, "dir_light.direction"),
-    //              1, glm::value_ptr(viewDir));
-    // glUniform3fv(glGetUniformLocation(shader, "dir_light.ambient"),
-    //              1, glm::value_ptr(main_light.ambient));
-    // glUniform3fv(glGetUniformLocation(shader, "dir_light.diffuse"),
-    //              1, glm::value_ptr(main_light.diffuse));
-    // glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
-    //              1, glm::value_ptr(main_light.specular));
-    // glUniform3fv(glGetUniformLocation(shader, "dir_light.color"),
-    //              1, glm::value_ptr(main_light.color));
-    // glUniform1f(glGetUniformLocation(shader, "dir_light.specular_exponent"), main_light.specular_exponent);
+    // ... set up the lights and send them to the shader...
+    int spotlightCount = 0;     // 0 based indexing
+    for (const auto &light : lights) {
+        switch (light->type) {
+            case Light::DIRECTIONAL: {
+                glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, "dir_light.direction"),
+                            1, glm::value_ptr(viewDir));
+                glUniform3fv(glGetUniformLocation(shader, "dir_light.ambient"),
+                            1, glm::value_ptr(light->ambient));
+                glUniform3fv(glGetUniformLocation(shader, "dir_light.diffuse"),
+                            1, glm::value_ptr(light->diffuse));
+                glUniform3fv(glGetUniformLocation(shader, "dir_light.specular"),
+                            1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, "dir_light.color"),
+                            1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, "dir_light.specular_exponent"), light->specular_exponent);
+                break;
+            }
+            case Light::SPOTLIGHT: {
+                std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
+                spotlightCount++;
 
-    for (int i = 0; i < 2; i++) {
-        std::string base = "spotlights[" + std::to_string(i) + "].";
-        
-        glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i].getPosition(), 1.0));
-        glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
-                    1, glm::value_ptr(posView));
+                glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(light->getPosition(), 1.0));
+                glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                            1, glm::value_ptr(posView));
 
-        glm::vec3 dirView = glm::mat3(viewTransform) * spotlights[i].getDirection();
-        glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
-                    1, glm::value_ptr(dirView));
+                glm::vec3 dirView = glm::mat3(viewTransform) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+                            1, glm::value_ptr(dirView));
 
-        glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].inner_cutoff)));
-        
-        glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].outer_cutoff)));
-        
-        glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), spotlights[i].constant);
-        
-        glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), spotlights[i].linear);
-        
-        glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), spotlights[i].quadratic);
+                glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(light->inner_cutoff)));
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(light->outer_cutoff)));
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), light->constant);
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), light->linear);
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
 
-        glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
-                     1, glm::value_ptr(spotlights[i].ambient));
+                glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                            1, glm::value_ptr(light->ambient));
 
-        glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
-                     1, glm::value_ptr(spotlights[i].diffuse));
+                glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                            1, glm::value_ptr(light->diffuse));
 
-        glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
-                     1, glm::value_ptr(spotlights[i].specular));
-        glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
-                     1, glm::value_ptr(spotlights[i].color));
-        glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
+                glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                            1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+                            1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), light->specular_exponent);
+            
+                break;
+            }
+            case Light::POINT: {
+
+                break;
+            }
+        }
     }
+    
+    
 
+    // for (int i = 0; i < 2; i++) {
+    //     std::string base = "spotlights[" + std::to_string(i) + "].";
+        
+    //     glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(spotlights[i].getPosition(), 1.0));
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+    //                 1, glm::value_ptr(posView));
+
+    //     glm::vec3 dirView = glm::mat3(viewTransform) * spotlights[i].getDirection();
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+    //                 1, glm::value_ptr(dirView));
+
+    //     glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].inner_cutoff)));
+        
+    //     glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(spotlights[i].outer_cutoff)));
+        
+    //     glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), spotlights[i].constant);
+        
+    //     glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), spotlights[i].linear);
+        
+    //     glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), spotlights[i].quadratic);
+
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+    //                  1, glm::value_ptr(spotlights[i].ambient));
+
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+    //                  1, glm::value_ptr(spotlights[i].diffuse));
+
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+    //                  1, glm::value_ptr(spotlights[i].specular));
+    //     glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+    //                  1, glm::value_ptr(spotlights[i].color));
+    //     glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), spotlights[i].specular_exponent);
+    // }
+
+    glUniform1i(glGetUniformLocation(shader, "numLights"), NUM_LIGHTS);
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
 
     // send shadow data to shader
     if (enableShadows) {
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < NUM_LIGHTS; i++) {
             std::string lightTransformMat = "lightTransforms[" + std::to_string(i) + "]";
             glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
                             1, GL_FALSE, glm::value_ptr(lightTransforms[i]));
@@ -1132,15 +1199,15 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         
         case GLFW_KEY_2:
-            // active_camera = &main_light.cam;
+            active_camera = &main_light.cam;
             break;
 
         case GLFW_KEY_3:
-            active_camera = &spotlights[0].cam;
+            active_camera = &spotlight1.cam;
             break;
 
         case GLFW_KEY_4:
-            active_camera = &spotlights[1].cam;
+            active_camera = &spotlight2.cam;
             break;
         case GLFW_KEY_5:
             enableShadows = !enableShadows;

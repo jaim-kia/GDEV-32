@@ -28,15 +28,17 @@ struct SpotLight {
     float specular_exponent;
 };
 
+uniform int numLights;
+
 in vec3 shaderPosition;
 in mat3 shaderTBN;
 in vec2 shaderTexCoord;
-in vec4 shaderLightSpacePositions[2];
+in vec4 shaderLightSpacePositions[numLights];
 
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
 uniform sampler2D specularMap;
-uniform sampler2D shadowMaps[2];
+uniform sampler2D shadowMaps[numLights];
 
 uniform bool enableShadows;
 
@@ -90,6 +92,32 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     vec3 specular = light.specular * spec * light.color * textureSpecular;
 
     return (diffuse + specular) * intensity * attenuation;
+}
+
+bool inShadowDirLight(int index)
+{
+    // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
+    vec3 position = shaderLightSpacePositions[index].xyz / shaderLightSpacePositions[index].w;
+    position = position * 0.5f + 0.5f;
+
+    // if the position is outside the light-space frustum, do NOT put the
+    // fragment in shadow, to prevent the scene from becoming dark "by default"
+    if (position.x < 0.0f || position.x > 1.0f
+        || position.y < 0.0f || position.y > 1.0f
+        || position.z < 0.0f || position.z > 1.0f)
+    {
+        return false;
+    }
+
+    // access the shadow map at this position
+    float shadowMapZ = texture(shadowMaps[index], position.xy).r;
+
+    // add a bias to prevent shadow acne
+    float bias = 0.0005f;
+    shadowMapZ += bias;
+
+    // if the depth stored in the texture is less than the current fragment's depth, we are in shadow
+    return shadowMapZ < position.z;
 }
 
 bool inShadowSpotlight(int index)
