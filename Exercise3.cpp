@@ -554,7 +554,7 @@ void renderDirectionalShadows(int index, Light& light) {
     glUseProgram(shadowMapShader);
 
     // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
-    float bounds = 10.0f;
+    float bounds = 45.0f;
     glm::mat4 lightTransform;
     lightTransform = glm::ortho(-bounds, bounds, -bounds, bounds, 0.1f, 100.0f) * 
                     glm::lookAt(light.getPosition(),           // light position
@@ -745,7 +745,7 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
-    glUniform1f(glGetUniformLocation(shader, "radius"), 6.0f);
+    glUniform1f(glGetUniformLocation(shader, "radius"), 8.0f);
     glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
 
     glUseProgram(simple_shader);
@@ -1020,6 +1020,18 @@ void render()
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
 
+    // cave:
+    glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[6]); 
+    // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
+
+
     // Floor:
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
@@ -1051,16 +1063,6 @@ void render()
 
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-    // cave:
-    glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]); 
-    // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
-    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
-    glBindVertexArray(vaos[3]);
-    glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
     /*---------------- INSTANCING FISH -----------------*/
     // computeNextFishStates(static_cast<float>(glfwGetTime()));
