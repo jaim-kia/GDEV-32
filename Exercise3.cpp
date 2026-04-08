@@ -532,6 +532,10 @@ void drawSceneGeometry() {
     glBindVertexArray(vaos[2]);
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 
+    // fish
+    glBindVertexArray(instancedVao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+
     // cave
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
