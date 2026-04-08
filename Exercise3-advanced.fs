@@ -41,6 +41,7 @@ uniform sampler2D directionalShadowTextures[1];
 uniform sampler2D spotShadowTextures[2];
 
 uniform bool enableShadows;
+uniform bool hasNormalAndSpecularMaps;  // NEW: false = skip normal/specular map lookups
 
 uniform DirLight dir_lights[1];
 uniform SpotLight spotlights[2];
@@ -67,7 +68,7 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
     vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
 
     // specular shading
-    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
+    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, shaderTexCoord)) : vec3(0.0f);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
     vec3 specular = light.specular * spec * light.color * textureSpecular;
@@ -95,7 +96,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
 
     // specular shading
-    vec3 textureSpecular = vec3(texture(specularMap, shaderTexCoord));
+    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, shaderTexCoord)) : vec3(0.0f);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
     vec3 specular = light.specular * spec * light.color * textureSpecular;
@@ -257,9 +258,14 @@ float inShadowDirLight_old(int index) {
 
 void main() {
     // look up the normal from the normal map, then reorient it with the current model transform via the TBN matrix
-    vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
-    textureNormal = normalize(textureNormal * 2.0f - 1.0f);  // convert range from [0, 1] to [-1, 1]
-    vec3 normalDir = normalize(shaderTBN * textureNormal);
+    vec3 normalDir;
+    if (hasNormalAndSpecularMaps) {
+        vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
+        textureNormal = normalize(textureNormal * 2.0f - 1.0f);  // convert range from [0, 1] to [-1, 1]
+        normalDir = normalize(shaderTBN * textureNormal);
+    } else {
+        normalDir = normalize(shaderTBN[2]);  // use the interpolated vertex normal (TBN's Z column)
+    }
 
     vec3 viewDir = normalize(-shaderPosition);
 

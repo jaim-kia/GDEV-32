@@ -850,6 +850,7 @@ void render()
     // using our shader program...
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 1);
 
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
@@ -1044,14 +1045,15 @@ void render()
     // glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
 
     // cave:
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[6]); 
-    // glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
-    // glBindVertexArray(vaos[3]);
-    // glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[6]); 
+    // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
     /*---------------- INSTANCING FISH -----------------*/
     // computeNextFishStates(static_cast<float>(glfwGetTime()));
