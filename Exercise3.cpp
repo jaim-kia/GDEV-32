@@ -141,7 +141,7 @@ bool enableShadows = true;
 /*------------------FISH--------------------*/
 
 // fish parameters
-const int NUM_FISH = 0;
+const int NUM_FISH = 100;
 const int DT = 16; // milliseconds per frame (~60 FPS)
 const float TURN_RATE = 0.1f; // radians per frame
 const int MAX_SPEED = 30;
@@ -771,50 +771,50 @@ bool setup()
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
-    // initFish();
-    // makeAABBs(); 
+    initFish();
+    makeAABBs(); 
 
-    // glGenVertexArrays(1, &instancedVao);
-    // glGenBuffers(1, &instancedVbo);      
-    // glGenBuffers(1, &instancedVboMatrix); 
+    glGenVertexArrays(1, &instancedVao);
+    glGenBuffers(1, &instancedVbo);      
+    glGenBuffers(1, &instancedVboMatrix); 
 
-    // glBindVertexArray(instancedVao);
+    glBindVertexArray(instancedVao);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
-    // glBufferData(GL_ARRAY_BUFFER, fish.size() * sizeof(float), fish.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
+    glBufferData(GL_ARRAY_BUFFER, fish.size() * sizeof(float), fish.data(), GL_STATIC_DRAW);
 
-    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
-    // glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
-    // glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
-    // glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
 
-    // glEnableVertexAttribArray(0);
-    // glEnableVertexAttribArray(1);
-    // glEnableVertexAttribArray(2);
-    // glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
     
-    // GLuint instancedVaoMatrix = instancedVao;
-    // glBindVertexArray(instancedVaoMatrix);
+    GLuint instancedVaoMatrix = instancedVao;
+    glBindVertexArray(instancedVaoMatrix);
 
-    // std::size_t vec4Size = sizeof(glm::vec4);
-    // glEnableVertexAttribArray(4);
-    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
-    // glEnableVertexAttribArray(5);
-    // glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
-    // glEnableVertexAttribArray(6);
-    // glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
-    // glEnableVertexAttribArray(7);
-    // glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
-    // glVertexAttribDivisor(4, 1);
-    // glVertexAttribDivisor(5, 1);
-    // glVertexAttribDivisor(6, 1);
-    // glVertexAttribDivisor(7, 1);
+    std::size_t vec4Size = sizeof(glm::vec4);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+    glVertexAttribDivisor(7, 1);
 
-    // glBindVertexArray(0);
+    glBindVertexArray(0);
     /*--------------------------------------------------*/
 
     glEnable(GL_DEPTH_TEST);
@@ -1021,6 +1021,44 @@ void render()
     glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
 
+    /*---------------- INSTANCING FISH -----------------*/
+    computeNextFishStates(static_cast<float>(glfwGetTime()));
+
+    // update fish matrices
+    for (int i = 0; i < NUM_FISH; i++) {
+        const Fish& f = fishes[i];
+        glm::mat4 m = glm::mat4(1.0f);
+        m = glm::translate(m, f.position);
+        m *= glm::mat4_cast(f.orientation);
+        // m = glm::scale(m, glm::vec3(0.5f));
+        fishMatrices[i] = m;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
+
+    glUseProgram(shader);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[7]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[10]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[11]);
+    // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
+
+
+    glBindVertexArray(instancedVao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+    /*--------------------------------------------------*/
+
+    glBindVertexArray(0);
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+
+    
     // Floor:
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
@@ -1047,42 +1085,6 @@ void render()
 
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-
-    /*---------------- INSTANCING FISH -----------------*/
-    // computeNextFishStates(static_cast<float>(glfwGetTime()));
-
-    // // update fish matrices
-    // for (int i = 0; i < NUM_FISH; i++) {
-    //     const Fish& f = fishes[i];
-    //     glm::mat4 m = glm::mat4(1.0f);
-    //     m = glm::translate(m, f.position);
-    //     m *= glm::mat4_cast(f.orientation);
-    //     // m = glm::scale(m, glm::vec3(0.5f));
-    //     fishMatrices[i] = m;
-    // }
-
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
-
-    // glUseProgram(shader);
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
-
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[7]);
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, texture[10]);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, texture[11]);
-    // // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
-
-
-    // glBindVertexArray(instancedVao);
-    // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
-    /*--------------------------------------------------*/
-
-    glBindVertexArray(0);
 
 }
 
