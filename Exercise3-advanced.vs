@@ -22,6 +22,7 @@ out mat3 shaderTBN;
 out vec2 shaderTexCoord;
 out vec4 dirLightSpacePositions[1];
 out vec4 spotLightSpacePositions[2];
+out vec3 worldSpacePosition;
 
 void main()
 {
@@ -34,6 +35,8 @@ void main()
     // compute the vertex's attributes in camera space
     shaderPosition = vec3(modelViewTransform * vec4(vertexPosition, 1.0f));
     shaderTexCoord = vertexTexCoord;
+    vec4 worldPos = finalModel * vec4(vertexPosition, 1.0f);
+    worldSpacePosition = worldPos.xyz;
 
     // compute the normal transform as the transpose of the inverse of the camera transform,
     // then compute a TBN matrix using this transform

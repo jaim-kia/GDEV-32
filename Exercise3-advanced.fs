@@ -33,15 +33,18 @@ in mat3 shaderTBN;
 in vec2 shaderTexCoord;
 in vec4 dirLightSpacePositions[1];
 in vec4 spotLightSpacePositions[2];
+in vec3 worldSpacePosition;
 
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
 uniform sampler2D specularMap;
 uniform sampler2D directionalShadowTextures[1];
 uniform sampler2D spotShadowTextures[2];
+uniform sampler2D shaderTextureSmoke;
 
 uniform bool enableShadows;
 uniform bool hasNormalAndSpecularMaps;  // NEW: false = skip normal/specular map lookups
+uniform bool isTile;
 
 uniform DirLight dir_lights[1];
 uniform SpotLight spotlights[2];
@@ -53,22 +56,23 @@ uniform sampler3D offsetTexture;
 
 uniform float shadowMapSize;
 uniform float radius;
+uniform float time;
 
 
 out vec4 fragmentColor;
 
-vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
+vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir, vec2 uv) {
     vec3 lightDir = (-light.direction); // for directional light, the light direction is the opposite of the light's direction vector
     
     // ambient
-    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
+    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, finalUV));
 
     // diffuse 
     float diff = max(dot(normal, lightDir), 0.0f);
-    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
+    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, uv));
 
     // specular shading
-    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, shaderTexCoord)) : vec3(0.0f);
+    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, uv)) : vec3(0.0f);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
     vec3 specular = light.specular * spec * light.color * textureSpecular;
@@ -76,7 +80,7 @@ vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir){
     return (diffuse + specular);
 } 
 
-vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos) {
+vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos, vec2 uv) {
     vec3 lightDir = normalize(light.position - fragPos);
 
     // attenuation
@@ -89,14 +93,14 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     float intensity = clamp((theta - light.outerCutoff) / epsilon, 0.0f, 1.0f);
 
     // ambient
-    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, shaderTexCoord));
+    // vec3 ambient = light.ambient * vec3(texture(diffuseMap, finalUV));
 
     // diffuse
     float diff = max(dot(normal, lightDir), 0.0f);
-    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, shaderTexCoord));
+    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, uv));
 
     // specular shading
-    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, shaderTexCoord)) : vec3(0.0f);
+    vec3 textureSpecular = hasNormalAndSpecularMaps ? vec3(texture(specularMap, uv)) : vec3(0.0f);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(reflectDir, viewDir), 0), light.specular_exponent);
     vec3 specular = light.specular * spec * light.color * textureSpecular;
@@ -115,7 +119,6 @@ float PCFRandomSampling(vec3 shadowCoord, sampler2D shadowMap) {
 
     float bias = 0.0005;
 
-    // tile index (matches your windowSize = 12)
     ivec2 tile = ivec2(mod(gl_FragCoord.xy, 12.0));
 
     for (int i = 0; i < numSamples / 2; i++)
@@ -257,14 +260,25 @@ float inShadowDirLight_old(int index) {
 }
 
 void main() {
-    // look up the normal from the normal map, then reorient it with the current model transform via the TBN matrix
+    
+    vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
+    vec2 finalUV;
+    if (isTile) {
+        finalUV = (worldSpacePosition.xz * 0.2)
+                + (displacement.rg - 0.5)
+                + vec2(time * 0.01, -time * 0.01);
+    } else {
+        finalUV = shaderTexCoord;
+    }
+    
+
     vec3 normalDir;
     if (hasNormalAndSpecularMaps) {
-        vec3 textureNormal = vec3(texture(normalMap, shaderTexCoord));
-        textureNormal = normalize(textureNormal * 2.0f - 1.0f);  // convert range from [0, 1] to [-1, 1]
+        vec3 textureNormal = vec3(texture(normalMap, finalUV));
+        textureNormal = normalize(textureNormal * 2.0f - 1.0f);  
         normalDir = normalize(shaderTBN * textureNormal);
     } else {
-        normalDir = normalize(shaderTBN[2]);  // use the interpolated vertex normal (TBN's Z column)
+        normalDir = normalize(shaderTBN[2]); 
     }
 
     vec3 viewDir = normalize(-shaderPosition);
@@ -283,7 +297,7 @@ void main() {
     
     // directional light
     for (int i = 0; i < 1; i++) {
-        vec3 lighting = CalculateDirLight(dir_lights[i], normalDir, viewDir);
+    vec3 lighting = CalculateDirLight(dir_lights[i], normalDir, viewDir, finalUV);
         
         lighting *= inShadowDirLight(i);
         result += lighting;
@@ -291,16 +305,15 @@ void main() {
 
     // spotlights
     for (int i = 0; i < 2; i++) {
-        vec3 lighting = CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition);
+        vec3 lighting = CalculateSpotLight(spotlights[i], normalDir, viewDir, shaderPosition, finalUV);
         
         lighting *= inShadowSpotlight(i);
         result += lighting;
     }
 
-    vec3 diffuseColor = vec3(texture(diffuseMap, shaderTexCoord));
+    vec3 diffuseColor = vec3(texture(diffuseMap, finalUV));
     result += ambient * diffuseColor;
     result += diffuseColor * 0.2f;
-    // result += vec3(texture(diffuseMap, shaderTexCoord));
 
     // result = vec3(0.5f);
     fragmentColor = vec4(result, 1.0f);

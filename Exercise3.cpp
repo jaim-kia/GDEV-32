@@ -520,13 +520,23 @@ bool setupShadowMaps()
 }
 
 void drawSceneGeometry() {
+    // station
+    glBindVertexArray(vaos[0]);
+    glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
+    
     // train
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
-    
+
     // water
     glBindVertexArray(vaos[2]);
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+
+    // cave
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
+
+
 }
 
 void renderDirectionalShadows(int index, Light& light) {
@@ -976,18 +986,18 @@ void render()
     }
 
     // Drawing Station
-    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
-    // // ... set the active textures...
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[0]);
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, texture[1]);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, texture[2]);
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    // ... set the active textures...
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[0]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[1]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[2]);
 
-    // // ... then draw our triangles
-    // glBindVertexArray(vaos[0]);
-    // glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
+    // ... then draw our triangles
+    glBindVertexArray(vaos[0]);
+    glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
 
     // // Drawing Train
     // glUseProgram(shader);
@@ -1010,39 +1020,36 @@ void render()
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[4]);
-    glBindVertexArray(vaos[2]);
-    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
     // Floor:
-    // glUseProgram(simple_shader);
-    // float currentTime = (float)glfwGetTime();
-    // glUniform1f(glGetUniformLocation(simple_shader, "time"), currentTime);
+    glUseProgram(shader);
+    glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
+    float currentTime = (float)glfwGetTime();
+    glUniform1f(glGetUniformLocation(shader, "time"), currentTime);
     // glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
 
     // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
+    // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
 
-    // glm::mat4 floorModel = glm::mat4(1.0f);
-    // floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
-    // floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
+    glm::mat4 floorModel = glm::mat4(1.0f);
+    floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
+    floorModel = glm::scale(floorModel, glm::vec3(10.0f, 1.0f, 10.0f));
     
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(floorModel));
-    // glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 1);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(floorModel));
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 1);
 
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[4]); 
-    // glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[4]); 
+    glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
 
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, texture[5]);
-    // glUniform1i(glGetUniformLocation(simple_shader, "shaderTextureSmoke"), 1);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[5]);
+    glUniform1i(glGetUniformLocation(shader, "shaderTextureSmoke"), 1);
 
-    // glBindVertexArray(vaos[2]);
-    // glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
+    glBindVertexArray(vaos[2]);
+    glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 
-    // glUniform1i(glGetUniformLocation(simple_shader, "isTile"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
     // cave:
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
