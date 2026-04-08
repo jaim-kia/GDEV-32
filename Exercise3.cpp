@@ -1002,12 +1002,6 @@ void render()
     // // Drawing Train
     // glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
-
-    // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.cam.position));
-    // glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
     
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[3]);
@@ -1015,7 +1009,6 @@ void render()
     glBindTexture(GL_TEXTURE_2D, texture[8]);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, texture[9]);
-    // glUniform1i(glGetUniformLocation(simple_shader, "diffuseMap"), 0);
 
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
@@ -1024,10 +1017,6 @@ void render()
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[6]); 
-    // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(modelTransform));
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
@@ -1037,11 +1026,6 @@ void render()
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 0);
     float currentTime = (float)glfwGetTime();
     glUniform1f(glGetUniformLocation(shader, "time"), currentTime);
-    // glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
-
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(simple_shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniform3fv(glGetUniformLocation(simple_shader, "lightPosition"), 1, glm::value_ptr(main_light.getPosition()));
 
     glm::mat4 floorModel = glm::mat4(1.0f);
     floorModel = glm::translate(floorModel, glm::vec3(active_camera->position.x, 0.0f, active_camera->position.z));
