@@ -53,9 +53,9 @@ uniform vec2 shadowTexelStep;
 
 // for random sampling in PCF
 uniform sampler3D offsetTexture; 
-
 uniform float shadowMapSize;
 uniform float radius;
+uniform int pcfFilterSize;
 uniform float time;
 
 
@@ -111,7 +111,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
 float PCFRandomSampling(vec3 shadowCoord, sampler2D shadowMap) {
     float shadow = 0.0;
 
-    int filterSize = 7;
+    int filterSize = pcfFilterSize;
     int numSamples = filterSize * filterSize;
 
     vec2 uv = shadowCoord.xy;
@@ -175,90 +175,6 @@ float inShadowSpotlight(int index)
     return PCFRandomSampling(position, spotShadowTextures[index]);
 }
 
-float inShadowSpotlight_old(int index) {
-    // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
-    vec3 position = spotLightSpacePositions[index].xyz / spotLightSpacePositions[index].w;
-    position = position * 0.5f + 0.5f;
-
-    // if the position is outside the light-space frustum, do NOT put the
-    // fragment in shadow, to prevent the scene from becoming dark "by default"
-    // (note that if you have a spot light, you might want to do the opposite --
-    // that is, everything outside the spot light's cone SHOULD be dark by default)
-    if (position.x < 0.0f || position.x > 1.0f
-        || position.y < 0.0f || position.y > 1.0f
-        || position.z < 0.0f || position.z > 1.0f)
-    {
-        return 0.0f;
-    }
-
-    // access the shadow map at this position
-    // float shadowMapZ = texture(shadowMaps[index], position.xy).r;
-
-    // add a bias to prevent shadow acne
-    float bias = 0.0005f;
-    // shadowMapZ += bias;
-    float shadow = 0.0f;
-
-    int kernelRadius = 3; // 1 is 3x3 2 is 5 and so on
-    int samples = 0;
-
-    for (int x = -kernelRadius; x <= kernelRadius; x++)
-    {
-        for (int y = -kernelRadius; y <= kernelRadius; y++)
-        {
-            // shift the pixel based on kernel
-            // shadowTexelStep converts offset from pixelunit (from kernel) to uv space (for texture)
-            float shadowMapZ = texture(spotShadowTextures[index], position.xy + vec2(x, y) * shadowTexelStep).r;
-            shadow += (shadowMapZ + bias < position.z) ? 0.0f : 1.0f;
-            samples++;
-        }
-    }
-
-    return shadow / float(samples); // 0.0 = fully in shadow, 1.0 = fully lit
-}
-
-float inShadowDirLight_old(int index) {
-    // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
-    vec3 position = dirLightSpacePositions[index].xyz / dirLightSpacePositions[index].w;
-    position = position * 0.5f + 0.5f;
-
-    // if the position is outside the light-space frustum, do NOT put the
-    // fragment in shadow, to prevent the scene from becoming dark "by default"
-    // (note that if you have a spot light, you might want to do the opposite --
-    // that is, everything outside the spot light's cone SHOULD be dark by default)
-    if (position.x < 0.0f || position.x > 1.0f
-        || position.y < 0.0f || position.y > 1.0f
-        || position.z < 0.0f || position.z > 1.0f)
-    {
-        return 0.0f;
-    }
-
-    // access the shadow map at this position
-    // float shadowMapZ = texture(shadowMaps[index], position.xy).r;
-
-    // add a bias to prevent shadow acne
-    float bias = 0.0005f;
-    // shadowMapZ += bias;
-    float shadow = 0.0f;
-
-    int kernelRadius = 3; // 1 is 3x3 2 is 5 and so on
-    int samples = 0;
-
-    for (int x = -kernelRadius; x <= kernelRadius; x++)
-    {
-        for (int y = -kernelRadius; y <= kernelRadius; y++)
-        {
-            // shift the pixel based on kernel
-            // shadowTexelStep converts offset from pixelunit (from kernel) to uv space (for texture)
-            float shadowMapZ = texture(directionalShadowTextures[index], position.xy + vec2(x, y) * shadowTexelStep).r;
-            shadow += (shadowMapZ + bias < position.z) ? 0.0f : 1.0f;
-            samples++;
-        }
-    }
-
-    return shadow / float(samples); // 0.0 = fully in shadow, 1.0 = fully lit
-}
-
 void main() {
     
     vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
@@ -293,7 +209,7 @@ void main() {
     for (int i = 0; i < 2; i++) {
         ambient += spotlights[i].ambient;
     }
-    ambient /= 3.0f; // average the ambient light contributions
+    ambient /= 3.0f;
     
     // directional light
     for (int i = 0; i < 1; i++) {
@@ -315,6 +231,5 @@ void main() {
     result += ambient * diffuseColor;
     result += diffuseColor * 0.2f;
 
-    // result = vec3(0.5f);
     fragmentColor = vec4(result, 1.0f);
 }
