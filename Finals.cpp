@@ -1,0 +1,1259 @@
+/******************************************************************************
+ * Use WASD keys to move the main camera, QE to move up and down; use left shift to move faster
+ * Use mouse to look around; use scroll wheel to adjust spotlight cutoff angles
+ * Press F to switch to fill mode, L to switch to line mode, P to switch to point mode
+ * Press R to reset camera position and orientation, Z/X to adjust main camera FOV
+ * 
+ * Press 1 to switch to main camera, 2 to switch to directional light camera;
+ *  
+ * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
+ * the same set of keys to move the spotlight and mouse to adjust its direction;
+ * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle. 
+ *****************************************************************************/
+
+#include <iostream>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/gtc/type_ptr.hpp>
+#include <gdev.h>
+
+// change this to your desired window attributes
+#define WINDOW_WIDTH  1280
+#define WINDOW_HEIGHT 720
+#define WINDOW_TITLE  "GDEV32 Final Project - Gimena, Tan"
+GLFWwindow *pWindow;
+
+// models
+std::vector<float> FloorMesh = {};
+std::vector<float> BricksParallax = {};
+// std::vector<float> fish = {};
+
+// OpenGL object IDs
+GLuint vao;
+GLuint vbo;
+GLuint instancedVao;
+GLuint instancedVbo;
+GLuint instancedVboMatrix;
+GLuint shader;
+GLuint texture[12];
+
+int vertex_data_num =  5;
+GLuint vaos[5], vbos[5];
+std::vector<float> vertex_data[5];
+size_t data_sizes[5];
+
+double previousTime = 0.0;
+
+struct Light;
+
+struct Camera {
+    glm::vec3 position = glm::vec3(0.0f, 3.0f, 5.0f);
+    glm::vec3 front = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+    float fov = 90.0f;
+
+    // owner pointer
+    struct Light* owner = nullptr;
+};
+
+struct Light {
+    enum Type {
+        DIRECTIONAL,
+        POINT,
+        SPOTLIGHT
+    } type = DIRECTIONAL;
+
+    glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+    glm::vec3 diffuse = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 specular = glm::vec3(0.5f, 0.5f, 0.5f);
+    glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
+    float specular_exponent = 32.0f;
+
+    float inner_cutoff = 0.0f; // for spotlight
+    float outer_cutoff = 0.0f; // for spotlight
+    
+    // for attenuation (for point and spotlight)
+    float constant = 1.0f; 
+    float linear = 0.09f;
+    float quadratic = 0.032f;
+    
+    Camera cam;
+
+    Light() {
+        cam.owner = this;
+    }
+
+    Light(Type t) : type(t) {
+        cam.owner = this;
+    }
+
+    glm::vec3 getPosition() {
+        return cam.position;
+    }
+    glm::vec3 getDirection() {
+        return cam.front;
+    }
+};
+
+Camera main_camera;
+
+Light main_light = Light(Light::DIRECTIONAL);
+Light spotlight1 = Light(Light::SPOTLIGHT);
+Light spotlight2 = Light(Light::SPOTLIGHT);
+
+std::vector<Light*> lights = {&main_light, &spotlight1, &spotlight2};
+
+Camera* active_camera = &main_camera;
+
+// mouse input tracking variables
+float lastX = WINDOW_WIDTH/2.0f;
+float lastY = WINDOW_HEIGHT/2.0f;
+bool firstMouse = true;
+
+#define SHADOW_SIZE 1024
+// GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
+// GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
+std::vector<GLuint> directionalShadowFbos;
+std::vector<GLuint> directionalShadowTextures;
+std::vector<glm::mat4> directionalLightTransforms;
+
+std::vector<GLuint> spotShadowFbos;
+std::vector<GLuint> spotShadowTextures;
+std::vector<glm::mat4> spotLightTransforms;
+
+GLuint shadowMapShader;   // shadow map shader
+
+GLuint offsetTexture; // noise texture for PCF sampling
+#define PI 3.14159265358979323846f
+
+bool enableShadows = true;
+
+/*------------------FISH--------------------*/
+
+// fish parameters
+const int NUM_FISH = 100;
+const int DT = 16; // milliseconds per frame (~60 FPS)
+const float TURN_RATE = 0.1f; // radians per frame
+const int MAX_SPEED = 30;
+const int MIN_SPEED = 20;
+
+const float AVOID_RADIUS = 0.4f;
+const float AVOID_WEIGHT = 0.5f;
+const float OBSTACLE_WEIGHT = 1.0f;
+const float FLOW_WEIGHT = 1.0f;
+const float AVOID_DISTANCE = 1.5f; // how far influence reaches
+const float EPSILON = 0.0001f;
+
+const glm::vec3 WORLD_UP(0.0f, 1.0f, 0.0f);
+const glm::vec3 TANK_MIN(-20.0f, 0.0f, -20.0f);
+const glm::vec3 TANK_MAX(20.0f);
+
+float tankVertices[] = {
+    // positions          // texture coords  // normals         // colors
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f, // back face
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+
+    // front face
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+
+    // left face
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    // right face
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    // bottom face
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MIN.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MIN.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+    // top face
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MIN.z, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MAX.x, TANK_MAX.y, TANK_MAX.z, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MAX.z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    TANK_MIN.x, TANK_MAX.y, TANK_MIN.z, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+
+};
+
+struct Fish {
+    glm::vec3 position;
+    glm::vec3 velocity; 
+    float speed;
+    float radius;
+    glm::quat orientation;
+};
+
+std::vector<Fish> fishes(NUM_FISH);
+std::vector<glm::mat4> fishMatrices(NUM_FISH);
+
+void initFish() {
+    float radius = 10.0f;
+    float offset = 5.0f;
+
+    int i = 0;
+    for (auto& f : fishes) {
+        float angle = (float)i++ / (float)NUM_FISH * 360.0f;
+        float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float x = sin(angle) * radius + displacement;
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float y = displacement * 0.4f + 1.0f;
+        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+        float z = cos(angle) * radius + displacement;
+        
+        f.position = glm::vec3(x, y, z);
+
+        f.velocity = glm::normalize(glm::vec3(
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f,
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f,
+            static_cast<float>(rand() % 2000) / 1000.0f - 1.0f
+        ));
+        f.speed = static_cast<float>(((rand() % (MAX_SPEED - MIN_SPEED + 1)) + MIN_SPEED) / 1000.0f);
+        // std::cout << f.speed << std::endl;
+        f.radius = 0.15f;
+        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); 
+    }    
+}
+
+glm::vec3 flowField(const glm::vec3& position, float time) {
+    float flowX = sin(position.z + time);
+    float flowY = cos(position.x + time * 0.5f);
+    float flowZ = cos(position.y + time);
+    return glm::normalize(glm::vec3(flowX, flowY, flowZ));
+}
+
+glm::vec3 avoidNeighbors(const Fish& fish, const std::vector<Fish>& fishes) {
+    glm::vec3 avoidance(0.0f);
+    for (const auto& other : fishes) {
+        if (&fish != &other) {
+            glm::vec3 d = fish.position - other.position;
+            float dist = glm::length(d);
+
+            if (dist < AVOID_RADIUS) {
+                avoidance += glm::normalize(d) * (AVOID_RADIUS - dist);
+            }
+        }
+    }
+    return avoidance;
+}
+
+glm::vec3 avoidWalls(const Fish& f) {
+    glm::vec3 avoidance(0.0f);
+    float margin = 0.5f;
+    
+    glm::vec3 pos = f.position;
+    if (pos.x > TANK_MAX.x - margin) avoidance.x -= 1.0f;
+    if (pos.x < TANK_MIN.x + margin) avoidance.x += 1.0f;
+    if (pos.y > TANK_MAX.y - margin) avoidance.y -= 1.0f;
+    if (pos.y < TANK_MIN.y + margin) avoidance.y += 1.0f;
+    if (pos.z > TANK_MAX.z - margin) avoidance.z -= 1.0f;
+    if (pos.z < TANK_MIN.z - margin) avoidance.z += 1.0f;
+
+    return avoidance;
+}
+
+struct Obstacle {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
+std::vector<Obstacle> obstacles = {
+    {glm::vec3(-7.9399, 6.10147, 2.57709), glm::vec3(8.09769, 1.73833, -2.57709)},
+    {glm::vec3(6.73175, -0.01116, -1.64897), glm::vec3(-6.7474, 2.0365, 1.67077)},
+};
+
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
+std::vector<AABB> aabbs;
+
+void makeAABBs() {
+    for (const Obstacle &obs : obstacles) {
+        AABB box;
+        box.min = glm::min(obs.min, obs.max);
+        box.max = glm::max(obs.min, obs.max);
+        aabbs.push_back(box);
+    }
+}
+
+
+glm::vec3 closestPointOnAABB(const glm::vec3& point, const glm::vec3& min, const glm::vec3& max) {
+    return glm::clamp(point, min, max);
+}
+
+glm::vec3 avoidBoundingBox(const Fish& fish, const glm::vec3& boxMin, const glm::vec3& boxMax) {
+    glm::vec3 closest = closestPointOnAABB(fish.position, boxMin, boxMax);
+    glm::vec3 toFish = fish.position - closest;
+    float distance = glm::length(toFish);
+
+    if (distance > AVOID_DISTANCE)
+        return glm::vec3(0.0f);
+
+    if (distance < EPSILON) {
+        glm::vec3 center = (boxMin + boxMax) * 0.5f;
+        glm::vec3 dir = glm::normalize(fish.position - center);
+        return dir * AVOID_DISTANCE;
+    }
+
+    float strength = (AVOID_DISTANCE - distance) / AVOID_DISTANCE;
+    return glm::normalize(toFish) * strength;
+}
+
+void computeNextFishStates_old(float time) {
+    for (auto& f : fishes) {
+        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
+        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+
+        // get obstacles
+        glm::vec3 obstacle(0.0f);
+        for (const AABB& box : aabbs) {
+            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
+        }
+
+        // glm::vec3 steering = flow + avoid + wall + obstacle;
+
+        // glm::vec3 desiredDir = glm::normalize(steering);  
+        // glm::vec3 currentDir = glm::normalize(f.velocity);
+        // glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
+
+        // // new basis
+        // glm::vec3 forward = newDir;
+        // glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
+        // glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        // glm::mat3 rotationMatrix(right, up, forward);
+        // f.orientation = glm::quat_cast(rotationMatrix);
+
+        // f.velocity = forward;
+        // f.position += f.velocity * f.speed * (DT / 16.0f);
+
+        glm::vec3 desiredVelocity = glm::normalize(flow + avoid + wall + obstacle);
+        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning 
+        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time 
+        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient
+
+    }
+}
+
+void computeNextFishStates(float time) {
+    for (auto& f : fishes) {
+        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
+        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
+        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
+
+        // get obstacles
+        glm::vec3 obstacle(0.0f);
+        for (const AABB& box : aabbs) {
+            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
+        }
+
+        glm::vec3 steering = flow + avoid + wall + obstacle;
+
+        glm::vec3 desiredDir = glm::normalize(steering);  
+        glm::vec3 currentDir = glm::normalize(f.velocity);
+        glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
+
+        // new basis
+        glm::vec3 forward = newDir;
+        glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
+        glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        glm::mat3 rotationMatrix(right, up, forward);
+        f.orientation = glm::quat_cast(rotationMatrix);
+
+        f.velocity = forward;
+        f.position += f.velocity * f.speed * (DT / 16.0f);
+    }
+}
+
+
+/*------------------------------------------*/
+
+// helper function for reading model data from a file
+void readModelData(std::vector<float> &array, const char* filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string value;
+        std::istringstream tokenizer(line);
+        while (std::getline(tokenizer, value, ',')) {
+            try {
+                array.push_back(std::stof(value));
+            } catch (const std::invalid_argument& e) {
+                // skip
+            }
+        }
+    }
+    
+}
+
+void setupLights() {
+    for (const auto &light : lights) {
+        switch (light->type) {
+            case Light::DIRECTIONAL:
+                light->cam.front = glm::vec3(-0.2f, -1.0f, -0.3f);
+                light->cam.position = glm::vec3(0.0f, 40.0f, 5.0f);
+                break;
+            case Light::SPOTLIGHT:
+                light->inner_cutoff = 12.0f;
+                light->outer_cutoff = 17.0f;
+                break;
+            case Light::POINT:
+                // todo lol
+                break;
+        }
+    }
+}
+
+bool setupShadowMaps()
+{
+    int numDir = 0, numSpot = 0 /*, numPoint = 0*/;
+    for (auto* light : lights) {
+        if (light->type == Light::DIRECTIONAL) numDir++;
+        else if (light->type == Light::SPOTLIGHT) numSpot++;
+        // else if (light->type == Light::POINT) numPoint++;
+    }
+
+    // resizing vectors
+    directionalShadowFbos.resize(numDir);
+    directionalShadowTextures.resize(numDir);
+    directionalLightTransforms.resize(numDir);
+
+    spotShadowFbos.resize(numSpot);
+    spotShadowTextures.resize(numSpot);
+    spotLightTransforms.resize(numSpot);
+    
+    // TODO: point lights lol
+
+    // directional lights 
+    for (int i = 0; i < numDir; i++) {
+        glGenFramebuffers(1, &directionalShadowFbos[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[i]);
+
+        // attach a texture object to the framebuffer
+        glGenTextures(1, &directionalShadowTextures[i]);
+        glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, directionalShadowTextures[i], 0);
+        
+        // check if we did everything right
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            std::cout << "Could not create custom framebuffer " << i << ".\n";
+            return false;
+        }
+    }
+
+    // spotlights
+    for (int i = 0; i < numSpot; i++) {
+        glGenFramebuffers(1, &spotShadowFbos[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[i]);
+
+        // attach a texture object to the framebuffer
+        glGenTextures(1, &spotShadowTextures[i]);
+        glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, spotShadowTextures[i], 0);
+        
+        // check if we did everything right
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            std::cout << "Could not create custom framebuffer " << i << ".\n";
+            return false;
+        }
+    }
+
+    // load the shader program for drawing the shadow map
+    shadowMapShader = gdevLoadShader("Finals-Shader-Shadow.vs", "Finals-Shader-Shadow.fs");
+    if (! shadowMapShader)
+        return false;
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    return true;
+
+}
+
+void drawSceneGeometry() {
+    // Floor Mesh
+    glBindVertexArray(vaos[0]);
+    glDrawArrays(GL_TRIANGLES, 0, FloorMesh.size() / 11);
+    
+    // Bricks Parallax
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+
+    // // fish
+    // glBindVertexArray(instancedVao);
+    // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+}
+
+void renderDirectionalShadows(int index, Light& light) {
+    // use the shadow framebuffer for drawing the shadow map
+    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[index]);
+
+    // the viewport should be the size of the shadow map
+    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+
+    // clear the shadow map
+    // (we don't have a color buffer attachment, so no need to clear that)
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // using the shadow map shader...
+    glUseProgram(shadowMapShader);
+
+    // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
+    float bounds = 45.0f;
+    glm::mat4 lightTransform;
+    lightTransform = glm::ortho(-bounds, bounds, -bounds, bounds, 0.1f, 100.0f) * 
+                    glm::lookAt(light.getPosition(),           // light position
+                                glm::vec3(0.0f, 0.0f, 0.0f),   // scene center
+                                glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
+                       1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+    drawSceneGeometry();
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    directionalLightTransforms[index] = lightTransform;
+
+}
+
+void renderSpotShadows(int index, Light& light) {
+    // use the shadow framebuffer for drawing the shadow map
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[index]);
+
+    // the viewport should be the size of the shadow map
+    glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+
+    // clear the shadow map
+    // (we don't have a color buffer attachment, so no need to clear that)
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // using the shadow map shader...
+    glUseProgram(shadowMapShader);
+
+    // ... set up the light space matrix... FOR SPOTLIGHTS
+    glm::mat4 lightTransform;
+    lightTransform = glm::perspective(glm::radians(light.outer_cutoff * 2.0f),       // fov
+                                1.0f,                      // aspect ratio
+                                0.1f,                      // near plane
+                                100.0f);                   // far plane
+    lightTransform *= glm::lookAt(light.getPosition(),                 // eye position
+                                light.getPosition() + light.getDirection(),   // center position
+                                glm::vec3(0.0f, 1.0f, 0.0f));  // up vector
+
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "lightTransform"),
+                       1, GL_FALSE, glm::value_ptr(lightTransform));
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+    drawSceneGeometry();
+
+    // set the framebuffer back to the default onscreen buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    spotLightTransforms[index] = lightTransform;
+    
+
+
+}
+
+float randomFloat(float min, float max) {
+    return min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+}
+
+std::vector<float> data;
+
+// for pcf with random sampling
+void generateOffsetTextureData(int windowSize, int filterSize, std::vector<float>& data) {
+    
+    int bufferSize = windowSize * windowSize * filterSize * filterSize * 2; 
+    int numFilterSamples = filterSize * filterSize;
+    data.resize(bufferSize);
+
+    int index = 0;
+
+    for (int texY = 0; texY < windowSize; ++texY) {
+        for (int texX = 0; texX < windowSize; ++texX) {
+            for (int i = 0; i < numFilterSamples / 2; ++i) {
+                // generate sample 2*i
+                int sampleIndex = 2 * i;
+                int u = sampleIndex % filterSize;
+                int v = sampleIndex / filterSize;
+                float x = ((float)u + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float y = ((float)v + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float x1 = sqrtf(y) * cosf(2.0f * PI * x);
+                float y1 = sqrtf(y) * sinf(2.0f * PI * x);
+
+                // generate sample 2*i+1
+                sampleIndex = 2 * i + 1;
+                u = sampleIndex % filterSize;
+                v = sampleIndex / filterSize;
+                x = ((float)u + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                y = ((float)v + 0.5f + randomFloat(-0.5f, 0.5f)) / (float)filterSize;
+                float x2 = sqrtf(y) * cosf(2.0f * PI * x);
+                float y2 = sqrtf(y) * sinf(2.0f * PI * x);
+
+                data[index++] = x1;
+                data[index++] = y1;
+                data[index++] = x2;
+                data[index++] = y2;
+            }
+        }
+    }
+}
+
+void createTexture(int windowSize, int filterSize, const std::vector<float>& data) {
+    int numFilterSamples = filterSize * filterSize;
+
+    glActiveTexture(GL_TEXTURE0 + 12); // using texture unit 12 for the offset texture
+    glGenTextures(1, &offsetTexture);
+    glBindTexture(GL_TEXTURE_3D, offsetTexture);
+    glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA32F, numFilterSamples / 2, windowSize, windowSize);
+    // glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, data.data());
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, &data[0]);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_3D, 0);
+
+}
+
+void setupPCF() {
+    int windowSize = 12;
+    int filterSize = 7;
+
+    std::vector<float> offsetData;
+    generateOffsetTextureData(windowSize, filterSize, offsetData);
+    createTexture(windowSize, filterSize, offsetData);
+
+}
+
+// called by the main function to do initial setup, such as uploading vertex
+// arrays, shader programs, etc.; returns true if successful, false otherwise
+bool setup()
+{
+    readModelData(FloorMesh, "Finals-Data-FloorMesh.txt");
+    readModelData(BricksParallax, "Finals-Data-Parallax.txt");
+    // readModelData(fish, "fish_data.txt");
+
+    vertex_data[0] = FloorMesh;
+    vertex_data[1] = BricksParallax;
+    // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
+
+    setupLights();
+
+    // upload the model to the GPU (explanations omitted for brevity)
+    glGenVertexArrays(vertex_data_num, vaos);
+    glGenBuffers(vertex_data_num, vbos);
+
+    for (int i = 0; i < vertex_data_num; ++i) {
+        glBindVertexArray(vaos[i]);
+        glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
+        glBufferData(GL_ARRAY_BUFFER, vertex_data[i].size() * sizeof(float), vertex_data[i].data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);                     // position
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));   // texture coord
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));   // normal
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));   // tangent
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+    }
+
+    // load our shader program
+    shader = gdevLoadShader("Finals-Shader.vs", "Finals-Shader.fs");
+    if (!shader) return false;
+
+    // since we now use multiple textures, we need to set the texture channel for each texture
+    glUseProgram(shader);
+    glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
+    glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
+    glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
+    glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
+    glUniform1f(glGetUniformLocation(shader, "radius"), 8.0f);
+    glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+    // load our textures
+    // Floor Mesh:
+    texture[0] = gdevLoadTexture("Tex-FloorMesh-Diffuse.png", GL_REPEAT, true, true);
+    texture[1] = gdevLoadTexture("Tex-FloorMesh-Normals.png", GL_REPEAT, true, true);
+
+    // Brick Elevation:
+    texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
+    texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
+
+    if (! texture[0] || ! texture[1] || !texture[2]
+        || !texture[3])
+        return false;
+
+    /*---------------- INSTANCING FISH -----------------*/
+    // initFish();
+    // makeAABBs(); 
+
+    // glGenVertexArrays(1, &instancedVao);
+    // glGenBuffers(1, &instancedVbo);      
+    // glGenBuffers(1, &instancedVboMatrix); 
+
+    // glBindVertexArray(instancedVao);
+
+    // glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
+    // glBufferData(GL_ARRAY_BUFFER, fish.size() * sizeof(float), fish.data(), GL_STATIC_DRAW);
+
+    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
+    // glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
+    // glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
+    // glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
+
+    // glEnableVertexAttribArray(0);
+    // glEnableVertexAttribArray(1);
+    // glEnableVertexAttribArray(2);
+    // glEnableVertexAttribArray(3);
+
+    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    // glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
+    
+    // GLuint instancedVaoMatrix = instancedVao;
+    // glBindVertexArray(instancedVaoMatrix);
+
+    // std::size_t vec4Size = sizeof(glm::vec4);
+    // glEnableVertexAttribArray(4);
+    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+    // glEnableVertexAttribArray(5);
+    // glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+    // glEnableVertexAttribArray(6);
+    // glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+    // glEnableVertexAttribArray(7);
+    // glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+    // glVertexAttribDivisor(4, 1);
+    // glVertexAttribDivisor(5, 1);
+    // glVertexAttribDivisor(6, 1);
+    // glVertexAttribDivisor(7, 1);
+
+    // glBindVertexArray(0);
+    /*--------------------------------------------------*/
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+
+    if ( !setupShadowMaps())
+        return false;
+    
+    // for pcf with random sampling
+    setupPCF();
+
+    return true;
+}
+
+// called by the main function to do rendering per frame
+void render()
+{
+    // draw shadow map
+    if (enableShadows) {
+        int dirIdx = 0, spotIdx = 0;
+        for (auto* light : lights) {
+            if (light->type == Light::DIRECTIONAL) {
+                renderDirectionalShadows(dirIdx++, *light);
+            } 
+            else if (light->type == Light::SPOTLIGHT) {
+                renderSpotShadows(spotIdx++, *light);
+            } 
+            else if (light->type == Light::POINT) {
+                // TODO: lol
+            }
+        }
+    }
+
+    // before drawing the final scene, we need to set drawing to the whole window
+    int width, height;
+    glfwGetFramebufferSize(pWindow, &width, &height);
+    glViewport(0, 0, width, height);
+
+    // clear the whole frame
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // using our shader program...
+    glUseProgram(shader);
+
+    // ... set up the projection matrix...
+    glm::mat4 projectionTransform;
+    projectionTransform = glm::perspective(glm::radians(active_camera->fov),      // fov
+                                           (float) WINDOW_WIDTH / WINDOW_HEIGHT,  // aspect ratio
+                                           0.1f,                                  // near plane
+                                           100.0f);                               // far plane
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
+                       1, GL_FALSE, glm::value_ptr(projectionTransform));
+
+    // ... set up the view matrix...
+    glm::mat4 viewTransform;
+    viewTransform = glm::lookAt(active_camera->position,                // eye position
+                                active_camera->position + active_camera->front,   // center position
+                                active_camera->up);  // up vector
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
+                       1, GL_FALSE, glm::value_ptr(viewTransform));
+
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+   
+    // ... set up the lights and send them to the shader...
+    int spotlightCount = 0;     // 0 based indexing
+    for (const auto &light : lights) {
+        switch (light->type) {
+            case Light::DIRECTIONAL: {
+                glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
+                            1, glm::value_ptr(viewDir));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
+                            1, glm::value_ptr(light->ambient));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
+                            1, glm::value_ptr(light->diffuse));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
+                            1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
+                            1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), light->specular_exponent);
+                break;
+            }
+            case Light::SPOTLIGHT: {
+                std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
+                spotlightCount++;
+
+                glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(light->getPosition(), 1.0));
+                glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                            1, glm::value_ptr(posView));
+
+                glm::vec3 dirView = glm::mat3(viewTransform) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+                            1, glm::value_ptr(dirView));
+
+                glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(light->inner_cutoff)));
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(light->outer_cutoff)));
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), light->constant);
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), light->linear);
+                
+                glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
+
+                glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                            1, glm::value_ptr(light->ambient));
+
+                glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                            1, glm::value_ptr(light->diffuse));
+
+                glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                            1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+                            1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), light->specular_exponent);
+            
+                break;
+            }
+            case Light::POINT: {
+
+                break;
+            }
+        }
+    }
+    
+
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
+
+    if (enableShadows) {
+        // directional lights
+        for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
+            std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+                            1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
+    
+            glActiveTexture(GL_TEXTURE3 + i);
+            glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
+    
+            std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
+            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+        }
+        // spotlights
+        for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+            std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+                            1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+    
+            glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
+            glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+    
+            std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
+            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
+        }
+
+        glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+        glActiveTexture(GL_TEXTURE0 + 12);
+        glBindTexture(GL_TEXTURE_3D, offsetTexture);
+
+        glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    }
+
+    // Setting Up Default Uniforms
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+
+    // Renders:
+    // 1) Floor Mesh: hasNormal, No for the rest
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1); 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[0]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[1]);
+    glBindVertexArray(vaos[0]);
+    glDrawArrays(GL_TRIANGLES, 0, FloorMesh.size() / 11);
+
+    // 2) Bricks With Parallax: hasNormal, No for the rest
+    // No need to set hasNormal, use from previous draw
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[2]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[3]);
+    glBindVertexArray(vaos[1]);
+    glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+
+
+    /*---------------- INSTANCING FISH -----------------*/
+    // computeNextFishStates(static_cast<float>(glfwGetTime()));
+
+    // // update fish matrices
+    // for (int i = 0; i < NUM_FISH; i++) {
+    //     const Fish& f = fishes[i];
+    //     glm::mat4 m = glm::mat4(1.0f);
+    //     m = glm::translate(m, f.position);
+    //     m *= glm::mat4_cast(f.orientation);
+    //     // m = glm::scale(m, glm::vec3(0.5f));
+    //     fishMatrices[i] = m;
+    // }
+
+    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    // glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
+
+    // glUseProgram(shader);
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
+
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[7]);
+    // glActiveTexture(GL_TEXTURE1);
+    // glBindTexture(GL_TEXTURE_2D, texture[10]);
+    // glActiveTexture(GL_TEXTURE2);
+    // glBindTexture(GL_TEXTURE_2D, texture[11]);
+    // // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
+
+
+    // glBindVertexArray(instancedVao);
+    // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+    /*--------------------------------------------------*/
+}
+
+/*****************************************************************************/
+
+// for continuosly checking if certain keys are pressed and moving the camera accordingly
+void processInput(GLFWwindow *pWindow, float deltaTime) {
+    float cameraSpeed = 1.5f * deltaTime;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        cameraSpeed *= 2.0f;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS)
+        active_camera->position += active_camera->front * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS)
+        active_camera->position -= active_camera->front * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS)
+        active_camera->position += glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS)
+        active_camera->position -= glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS)
+        active_camera->position += active_camera->up * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS)
+        active_camera->position -= active_camera->up * cameraSpeed;
+
+    if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS)
+    {
+        if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+            Light* light = active_camera->owner;
+            light->outer_cutoff = glm::min(light->outer_cutoff + 30.0f * deltaTime, 90.0f);
+        }
+        else {
+            active_camera->fov = glm::min(active_camera->fov + 30.0f * deltaTime, 90.0f);
+        }
+    }
+
+    if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS)
+    {
+        if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+            Light* light = active_camera->owner;
+            light->outer_cutoff = glm::max(light->outer_cutoff - 30.0f * deltaTime, light->inner_cutoff);
+        }
+        else {
+            active_camera->fov = glm::max(active_camera->fov - 30.0f * deltaTime, 1.0f);
+        }
+    }
+}
+
+void mouse_callback(GLFWwindow* pWindow, double xpos, double ypos) {
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos-lastX;
+    float yoffset = lastY - ypos; // reverse cause y is reversed in window space;
+
+    lastX = xpos;
+    lastY = ypos;
+
+    const float sensitivity = 0.1f;
+
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    active_camera->yaw += xoffset;
+    active_camera->pitch += yoffset;
+
+    if (active_camera->pitch > 89.0f) {
+        active_camera->pitch = 89.0f;
+    }
+    if (active_camera->pitch < -89.0f) {
+        active_camera->pitch = -89.0f;
+    }
+
+    glm::vec3 cam_dir;
+    cam_dir.x = cos(glm::radians(active_camera->yaw)) * cos(glm::radians(active_camera->pitch));
+    cam_dir.y = sin(glm::radians(active_camera->pitch));
+    cam_dir.z = sin(glm::radians(active_camera->yaw)) * cos(glm::radians(active_camera->pitch));
+    active_camera->front = glm::normalize(cam_dir);
+    
+}
+
+void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
+    if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
+        Light* light = active_camera->owner;
+    
+        float spread = 5.0f; 
+        light->inner_cutoff += (float)yoffset;
+        if (light->inner_cutoff < 1.0f) light->inner_cutoff = 1.0f;
+        if (light->inner_cutoff > (90.0f - spread)) light->inner_cutoff = 90.0f - spread;
+
+        // force the outer cutoff to always be exactly 'spread' degrees larger
+        light->outer_cutoff = light->inner_cutoff + spread;
+    }
+    else {
+        active_camera->fov -= (float)yoffset;
+        if (active_camera->fov < 1.0f) {
+            active_camera->fov = 1.0f;
+        }
+        if (active_camera->fov > 90.0f) {
+            active_camera->fov = 90.0f;
+    }
+    }
+}
+
+// handler called by GLFW when there is a keyboard event
+void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)
+{
+    // // pressing Esc closes the window
+    // if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    //     glfwSetWindowShouldClose(pWindow, GL_TRUE);
+    
+    if (action != GLFW_PRESS) return;
+
+    switch (key)
+    {
+        case GLFW_KEY_ESCAPE:
+            glfwSetWindowShouldClose(pWindow, GL_TRUE);
+            break;
+
+        case GLFW_KEY_F:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            break;
+
+        case GLFW_KEY_L:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            break;
+
+        case GLFW_KEY_P:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+            break;
+
+        case GLFW_KEY_R:
+            active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
+            active_camera->yaw = -90.0f;
+            active_camera->pitch = 0.0f;
+            active_camera->fov = 45.0f;
+            active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
+            break;
+
+        case GLFW_KEY_1:
+            active_camera = &main_camera;
+            break;
+        
+        case GLFW_KEY_2:
+            active_camera = &main_light.cam;
+            break;
+
+        case GLFW_KEY_3:
+            active_camera = &spotlight1.cam;
+            break;
+
+        case GLFW_KEY_4:
+            active_camera = &spotlight2.cam;
+            break;
+        case GLFW_KEY_5:
+            enableShadows = !enableShadows;
+            break;
+
+    }
+}
+
+// handler called by GLFW when the window is resized
+void handleResize(GLFWwindow* pWindow, int width, int height)
+{
+    // tell OpenGL to do its drawing within the entire "client area" (area within the borders) of the window
+    glViewport(0, 0, width, height);
+}
+
+// main function
+int main(int argc, char** argv)
+{
+    // initialize GLFW and ask for OpenGL 3.3 core
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+    // create a GLFW window with the specified width, height, and title
+    pWindow = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, NULL, NULL);
+    if (! pWindow)
+    {
+        // gracefully terminate if we cannot create the window
+        std::cout << "Cannot create the GLFW window.\n";
+        glfwTerminate();
+        return -1;
+    }
+
+    // make the window the current context of subsequent OpenGL commands,
+    // and enable vertical sync and aspect-ratio correction on the GLFW window
+    glfwMakeContextCurrent(pWindow);
+    glfwSwapInterval(1);
+    glfwSetWindowAspectRatio(pWindow, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    // set up callback functions to handle window system events
+    glfwSetKeyCallback(pWindow, handleKeys);
+    glfwSetFramebufferSizeCallback(pWindow, handleResize);
+
+    // don't miss any momentary keypresses
+    glfwSetInputMode(pWindow, GLFW_STICKY_KEYS, GLFW_TRUE);
+
+    // set up callback functions to handle mouse events
+    glfwSetInputMode(pWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  
+    glfwSetCursorPosCallback(pWindow, mouse_callback);
+    glfwSetScrollCallback(pWindow, scroll_callback);
+
+    // initialize GLAD, which acts as a library loader for the current OS's native OpenGL library
+    gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+
+    float delta;
+    float last_frame = 0.0f;
+    // if our initial setup is successful...
+    if (setup())
+    {
+        // do rendering in a loop until the user closes the window
+        while (! glfwWindowShouldClose(pWindow))
+        {
+            // render our next frame
+            // (by default, GLFW uses double-buffering with a front and back buffer;
+            // all drawing goes to the back buffer, so the frame does not get shown yet)
+            float current_frame = glfwGetTime();
+            delta = current_frame - last_frame;
+            last_frame = current_frame;
+            processInput(pWindow, delta);
+            render();
+
+            // swap the GLFW front and back buffers to show the next frame
+            glfwSwapBuffers(pWindow);
+
+            // process any window events (such as moving, resizing, keyboard presses, etc.)
+            glfwPollEvents();
+        }
+    }
+
+    // gracefully terminate the program
+    glfwTerminate();
+    return 0;
+}
