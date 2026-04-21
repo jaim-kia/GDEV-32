@@ -26,6 +26,7 @@ GLFWwindow *pWindow;
 // models
 std::vector<float> FloorMesh = {};
 std::vector<float> BricksParallax = {};
+std::vector<float> GrassMesh = {};
 // std::vector<float> fish = {};
 
 // OpenGL object IDs
@@ -116,12 +117,16 @@ bool firstMouse = true;
 #define SHADOW_SIZE 1024
 // GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
 // GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
-std::vector<GLuint> directionalShadowFbos;
-std::vector<GLuint> directionalShadowTextures;
+// std::vector<GLuint> directionalShadowFbos;
+// std::vector<GLuint> directionalShadowTextures;
+GLuint directionalShadowFbo;
+GLuint directionalShadowArray;
 std::vector<glm::mat4> directionalLightTransforms;
 
-std::vector<GLuint> spotShadowFbos;
-std::vector<GLuint> spotShadowTextures;
+// std::vector<GLuint> spotShadowFbos;
+// std::vector<GLuint> spotShadowTextures;
+GLuint spotShadowFbo;
+GLuint spotShadowArray;
 std::vector<glm::mat4> spotLightTransforms;
 
 GLuint shadowMapShader;   // shadow map shader
@@ -130,6 +135,7 @@ GLuint offsetTexture; // noise texture for PCF sampling
 #define PI 3.14159265358979323846f
 
 bool enableShadows = true;
+bool showGrass = true;
 
 /*------------------FISH--------------------*/
 
@@ -436,81 +442,164 @@ void setupLights() {
     }
 }
 
+// bool setupShadowMaps_old()
+// {
+//     int numDir = 0, numSpot = 0 /*, numPoint = 0*/;
+//     for (auto* light : lights) {
+//         if (light->type == Light::DIRECTIONAL) numDir++;
+//         else if (light->type == Light::SPOTLIGHT) numSpot++;
+//         // else if (light->type == Light::POINT) numPoint++;
+//     }
+
+//     // resizing vectors
+//     directionalShadowFbos.resize(numDir);
+//     directionalShadowTextures.resize(numDir);
+//     directionalLightTransforms.resize(numDir);
+
+//     spotShadowFbos.resize(numSpot);
+//     spotShadowTextures.resize(numSpot);
+//     spotLightTransforms.resize(numSpot);
+    
+//     // TODO: point lights lol
+
+//     // directional lights 
+//     for (int i = 0; i < numDir; i++) {
+//         glGenFramebuffers(1, &directionalShadowFbos[i]);
+//         glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[i]);
+
+//         // attach a texture object to the framebuffer
+//         glGenTextures(1, &directionalShadowTextures[i]);
+//         glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
+//         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+//                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, directionalShadowTextures[i], 0);
+        
+//         // check if we did everything right
+//         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+//         {
+//             std::cout << "Could not create custom framebuffer " << i << ".\n";
+//             return false;
+//         }
+//     }
+
+//     GLuint dirShadowArray;
+//     glGenTextures(1, &dirShadowArray);
+//     glBindTexture(GL_TEXTURE_2D_ARRAY, dirShadowArray);
+//     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE, numDir,
+//                     0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+//     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+//     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
+//     // spotlights
+//     for (int i = 0; i < numSpot; i++) {
+//         glGenFramebuffers(1, &spotShadowFbos[i]);
+//         glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[i]);
+
+//         // attach a texture object to the framebuffer
+//         glGenTextures(1, &spotShadowTextures[i]);
+//         glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+//         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
+//                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, spotShadowTextures[i], 0);
+        
+//         // check if we did everything right
+//         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+//         {
+//             std::cout << "Could not create custom framebuffer " << i << ".\n";
+//             return false;
+//         }
+//     }
+
+//     // load the shader program for drawing the shadow map
+//     shadowMapShader = gdevLoadShader("Finals-Shader-Shadow.vs", "Finals-Shader-Shadow.fs");
+//     if (! shadowMapShader)
+//         return false;
+
+//     // set the framebuffer back to the default onscreen buffer
+//     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+//     return true;
+
+// }
+
 bool setupShadowMaps()
 {
-    int numDir = 0, numSpot = 0 /*, numPoint = 0*/;
+    int numDir = 0, numSpot = 0;
     for (auto* light : lights) {
         if (light->type == Light::DIRECTIONAL) numDir++;
         else if (light->type == Light::SPOTLIGHT) numSpot++;
-        // else if (light->type == Light::POINT) numPoint++;
     }
 
-    // resizing vectors
-    directionalShadowFbos.resize(numDir);
-    directionalShadowTextures.resize(numDir);
     directionalLightTransforms.resize(numDir);
-
-    spotShadowFbos.resize(numSpot);
-    spotShadowTextures.resize(numSpot);
     spotLightTransforms.resize(numSpot);
-    
-    // TODO: point lights lol
 
-    // directional lights 
-    for (int i = 0; i < numDir; i++) {
-        glGenFramebuffers(1, &directionalShadowFbos[i]);
-        glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[i]);
+    // --- Directional shadow array ---
+    // One FBO, one texture array with numDir layers
+    glGenFramebuffers(1, &directionalShadowFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbo);
 
-        // attach a texture object to the framebuffer
-        glGenTextures(1, &directionalShadowTextures[i]);
-        glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
-                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, directionalShadowTextures[i], 0);
-        
-        // check if we did everything right
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        {
-            std::cout << "Could not create custom framebuffer " << i << ".\n";
-            return false;
-        }
+    glGenTextures(1, &directionalShadowArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT,
+                 SHADOW_SIZE, SHADOW_SIZE, numDir,
+                 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // Attach layer 0 initially just to validate the FBO
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalShadowArray, 0, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "Could not create directional shadow framebuffer.\n";
+        return false;
     }
 
-    // spotlights
-    for (int i = 0; i < numSpot; i++) {
-        glGenFramebuffers(1, &spotShadowFbos[i]);
-        glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[i]);
+    // --- Spot shadow array ---
+    glGenFramebuffers(1, &spotShadowFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbo);
 
-        // attach a texture object to the framebuffer
-        glGenTextures(1, &spotShadowTextures[i]);
-        glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
-                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, spotShadowTextures[i], 0);
-        
-        // check if we did everything right
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        {
-            std::cout << "Could not create custom framebuffer " << i << ".\n";
-            return false;
-        }
+    glGenTextures(1, &spotShadowArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT,
+                 SHADOW_SIZE, SHADOW_SIZE, numSpot,
+                 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, spotShadowArray, 0, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "Could not create spot shadow framebuffer.\n";
+        return false;
     }
 
-    // load the shader program for drawing the shadow map
+    // Load shadow shader
     shadowMapShader = gdevLoadShader("Finals-Shader-Shadow.vs", "Finals-Shader-Shadow.fs");
-    if (! shadowMapShader)
+    if (!shadowMapShader)
         return false;
 
-    // set the framebuffer back to the default onscreen buffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
     return true;
-
 }
+
 
 void drawSceneGeometry() {
     // Floor Mesh
@@ -528,7 +617,10 @@ void drawSceneGeometry() {
 
 void renderDirectionalShadows(int index, Light& light) {
     // use the shadow framebuffer for drawing the shadow map
-    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[index]);
+    glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbo);
+
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              directionalShadowArray, 0, index);
 
     // the viewport should be the size of the shadow map
     glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
@@ -567,7 +659,10 @@ void renderDirectionalShadows(int index, Light& light) {
 
 void renderSpotShadows(int index, Light& light) {
     // use the shadow framebuffer for drawing the shadow map
-    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[index]);
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbo);
+
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              spotShadowArray, 0, index);
 
     // the viewport should be the size of the shadow map
     glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
@@ -684,10 +779,12 @@ bool setup()
 {
     readModelData(FloorMesh, "Finals-Data-FloorMesh.txt");
     readModelData(BricksParallax, "Finals-Data-Parallax.txt");
+    // readModelData(GrassMesh, "Finals-Data-Grass.txt");
     // readModelData(fish, "fish_data.txt");
 
     vertex_data[0] = FloorMesh;
     vertex_data[1] = BricksParallax;
+    // vertex_data[2] = GrassMesh;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     setupLights();
@@ -721,10 +818,27 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
+    glUniform1i(glGetUniformLocation(shader, "directionalShadowArray"), 3);
+    glUniform1i(glGetUniformLocation(shader, "spotShadowArray"), 4);    
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
     glUniform1f(glGetUniformLocation(shader, "radius"), 8.0f);
-    glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+    // glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+    // texture unit layout
+    // 0 - diffuse map
+    // 1 - normal map
+    // 2 - specular map
+    // 3 - dir shadow maps
+    // 4 - spot shadow maps
+    // 5 - point light shadow maps (todo)
+    // 6 - transparent texture (for grass)
+    // 12 - offset texture for pcf
+
+    // for alpha blending
+    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
 
     // load our textures
     // Floor Mesh:
@@ -735,8 +849,11 @@ bool setup()
     texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
     texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
 
+    // Transparent Grass:
+    texture[4] = gdevLoadTexture("Tex-Grass-Transparent.png", GL_CLAMP_TO_EDGE, true, true);
+
     if (! texture[0] || ! texture[1] || !texture[2]
-        || !texture[3])
+        || !texture[3] || !texture[4])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -918,37 +1035,65 @@ void render()
 
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
 
+    // if (enableShadows) {
+    //     // directional lights
+    //     for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
+    //         std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
+    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+    //                         1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
+    
+    //         glActiveTexture(GL_TEXTURE3 + i);
+    //         glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
+    
+    //         std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
+    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
+    //     }
+    //     // spotlights
+    //     for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+    //         std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
+    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+    //                         1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+    
+    //         glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
+    //         glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
+    
+    //         std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
+    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
+    //     }
+
+    //     glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+    //     glActiveTexture(GL_TEXTURE0 + 12);
+    //     glBindTexture(GL_TEXTURE_3D, offsetTexture);
+
+    //     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    // }
+
     if (enableShadows) {
-        // directional lights
+        // Upload light-space transform matrices
         for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
-            std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
-            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+            std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
                             1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
-    
-            glActiveTexture(GL_TEXTURE3 + i);
-            glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
-    
-            std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
-            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
         }
-        // spotlights
         for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
-            std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
-            glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
+            std::string name = "spotLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
                             1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
-    
-            glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
-            glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
-    
-            std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
-            glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
         }
 
-        glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+        // Bind the shadow arrays to their fixed units
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
 
-        glActiveTexture(GL_TEXTURE0 + 12);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
+
+        // glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"),
+        //             1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+
+        glActiveTexture(GL_TEXTURE12);
         glBindTexture(GL_TEXTURE_3D, offsetTexture);
-
         glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
     }
 
@@ -1011,6 +1156,34 @@ void render()
     // glBindVertexArray(instancedVao);
     // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
     /*--------------------------------------------------*/
+
+    // GRASS
+    if (showGrass) {
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 1);
+        glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
+        glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+        glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+        glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+
+        glm::mat4 identityModel = glm::mat4(1.0f);
+        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                        1, GL_FALSE, glm::value_ptr(identityModel));
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[4]);
+
+        glBindVertexArray(vaos[2]);
+        glDrawArrays(GL_TRIANGLES, 0, GrassMesh.size() / 11);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    }
+
 }
 
 /*****************************************************************************/
@@ -1176,7 +1349,9 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
         case GLFW_KEY_5:
             enableShadows = !enableShadows;
             break;
-
+        case GLFW_KEY_G:
+            showGrass = !showGrass;
+            break;
     }
 }
 

@@ -38,8 +38,8 @@ in vec3 worldSpacePosition;
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
 uniform sampler2D specularMap;
-uniform sampler2D directionalShadowTextures[1];
-uniform sampler2D spotShadowTextures[2];
+uniform sampler2DArray directionalShadowArray;
+uniform sampler2DArray spotShadowArray;
 uniform sampler2D shaderTextureSmoke;
 
 uniform bool enableShadows;
@@ -47,10 +47,13 @@ uniform bool hasNormal;
 uniform bool hasSpecular;
 uniform bool isTile;
 
+uniform bool isAlphaBlended;
+uniform float alphaThreshold;
+
 uniform DirLight dir_lights[1];
 uniform SpotLight spotlights[2];
 
-uniform vec2 shadowTexelStep;
+// uniform vec2 shadowTexelStep;
 
 // for random sampling in PCF
 uniform sampler3D offsetTexture; 
@@ -109,7 +112,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     return (diffuse + specular) * intensity * attenuation;
 }
 
-float PCFRandomSampling(vec3 shadowCoord, sampler2D shadowMap) {
+float PCFRandomSampling(vec3 shadowCoord, sampler2DArray shadowArray, int layer) {
     float shadow = 0.0;
 
     int filterSize = 7;
@@ -132,8 +135,8 @@ float PCFRandomSampling(vec3 shadowCoord, sampler2D shadowMap) {
         offset1 *= radius / shadowMapSize;
         offset2 *= radius / shadowMapSize;
 
-        float depth1 = texture(shadowMap, uv + offset1).r;
-        float depth2 = texture(shadowMap, uv + offset2).r;
+        float depth1 = texture(shadowArray, vec3(uv + offset1, layer)).r;
+        float depth2 = texture(shadowArray, vec3(uv + offset2, layer)).r;
 
         // 1.0 = lit, 0.0 = shadow
         shadow += (currentDepth - bias <= depth1) ? 1.0 : 0.0;
@@ -157,7 +160,7 @@ float inShadowDirLight(int index)
         return 1.0; // fully lit
     }
 
-    return PCFRandomSampling(position, directionalShadowTextures[index]);
+    return PCFRandomSampling(position, directionalShadowArray, index);
 }
 
 float inShadowSpotlight(int index)
@@ -173,91 +176,7 @@ float inShadowSpotlight(int index)
         return 1.0; // fully lit
     }
 
-    return PCFRandomSampling(position, spotShadowTextures[index]);
-}
-
-float inShadowSpotlight_old(int index) {
-    // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
-    vec3 position = spotLightSpacePositions[index].xyz / spotLightSpacePositions[index].w;
-    position = position * 0.5f + 0.5f;
-
-    // if the position is outside the light-space frustum, do NOT put the
-    // fragment in shadow, to prevent the scene from becoming dark "by default"
-    // (note that if you have a spot light, you might want to do the opposite --
-    // that is, everything outside the spot light's cone SHOULD be dark by default)
-    if (position.x < 0.0f || position.x > 1.0f
-        || position.y < 0.0f || position.y > 1.0f
-        || position.z < 0.0f || position.z > 1.0f)
-    {
-        return 0.0f;
-    }
-
-    // access the shadow map at this position
-    // float shadowMapZ = texture(shadowMaps[index], position.xy).r;
-
-    // add a bias to prevent shadow acne
-    float bias = 0.0005f;
-    // shadowMapZ += bias;
-    float shadow = 0.0f;
-
-    int kernelRadius = 3; // 1 is 3x3 2 is 5 and so on
-    int samples = 0;
-
-    for (int x = -kernelRadius; x <= kernelRadius; x++)
-    {
-        for (int y = -kernelRadius; y <= kernelRadius; y++)
-        {
-            // shift the pixel based on kernel
-            // shadowTexelStep converts offset from pixelunit (from kernel) to uv space (for texture)
-            float shadowMapZ = texture(spotShadowTextures[index], position.xy + vec2(x, y) * shadowTexelStep).r;
-            shadow += (shadowMapZ + bias < position.z) ? 0.0f : 1.0f;
-            samples++;
-        }
-    }
-
-    return shadow / float(samples); // 0.0 = fully in shadow, 1.0 = fully lit
-}
-
-float inShadowDirLight_old(int index) {
-    // perform perspective division and rescale to the [0, 1] range to get the coordinates into the depth texture
-    vec3 position = dirLightSpacePositions[index].xyz / dirLightSpacePositions[index].w;
-    position = position * 0.5f + 0.5f;
-
-    // if the position is outside the light-space frustum, do NOT put the
-    // fragment in shadow, to prevent the scene from becoming dark "by default"
-    // (note that if you have a spot light, you might want to do the opposite --
-    // that is, everything outside the spot light's cone SHOULD be dark by default)
-    if (position.x < 0.0f || position.x > 1.0f
-        || position.y < 0.0f || position.y > 1.0f
-        || position.z < 0.0f || position.z > 1.0f)
-    {
-        return 0.0f;
-    }
-
-    // access the shadow map at this position
-    // float shadowMapZ = texture(shadowMaps[index], position.xy).r;
-
-    // add a bias to prevent shadow acne
-    float bias = 0.0005f;
-    // shadowMapZ += bias;
-    float shadow = 0.0f;
-
-    int kernelRadius = 3; // 1 is 3x3 2 is 5 and so on
-    int samples = 0;
-
-    for (int x = -kernelRadius; x <= kernelRadius; x++)
-    {
-        for (int y = -kernelRadius; y <= kernelRadius; y++)
-        {
-            // shift the pixel based on kernel
-            // shadowTexelStep converts offset from pixelunit (from kernel) to uv space (for texture)
-            float shadowMapZ = texture(directionalShadowTextures[index], position.xy + vec2(x, y) * shadowTexelStep).r;
-            shadow += (shadowMapZ + bias < position.z) ? 0.0f : 1.0f;
-            samples++;
-        }
-    }
-
-    return shadow / float(samples); // 0.0 = fully in shadow, 1.0 = fully lit
+    return PCFRandomSampling(position, spotShadowArray, index);
 }
 
 void main() {
@@ -317,5 +236,14 @@ void main() {
     result += diffuseColor * 0.2f;
 
     // result = vec3(0.5f);
-    fragmentColor = vec4(result, 1.0f);
+    // fragmentColor = vec4(result, 1.0f);
+
+    if (isAlphaBlended) {
+        float alpha = texture(diffuseMap, finalUV).a;
+        if (alpha < alphaThreshold) 
+            discard; // discard the fragment if it's below the alpha threshold
+        fragmentColor = vec4(result, alpha);
+    } else {
+        fragmentColor = vec4(result, 1.0f);
+    }
 }
