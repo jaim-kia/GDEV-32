@@ -62,6 +62,10 @@ uniform float shadowMapSize;
 uniform float radius;
 uniform float time;
 
+uniform bool isReflective;
+uniform float reflectivity;
+uniform samplerCube cubemap;
+uniform mat3 inverseViewRotation;
 
 out vec4 fragmentColor;
 
@@ -181,9 +185,9 @@ float inShadowSpotlight(int index)
 
 void main() {
     
-    vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
     vec2 finalUV;
     if (isTile) {
+        vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
         finalUV = (worldSpacePosition.xz * 0.2)
                 + (displacement.rg - 0.5)
                 + vec2(time * 0.01, -time * 0.01);
@@ -240,9 +244,15 @@ void main() {
 
     if (isAlphaBlended) {
         float alpha = texture(diffuseMap, finalUV).a;
-        if (alpha < alphaThreshold) 
-            discard; // discard the fragment if it's below the alpha threshold
+        if (alpha < alphaThreshold) discard;
         fragmentColor = vec4(result, alpha);
+    } else if (isReflective) {
+        vec3 viewDirWorld = normalize(inverseViewRotation * normalize(-shaderPosition));
+        vec3 normalWorld = normalize(inverseViewRotation * normalDir);
+        vec3 reflectDir = reflect(-viewDirWorld, normalWorld);
+        vec4 envColor = texture(cubemap, reflectDir);
+        vec3 blended = mix(result, envColor.rgb, reflectivity);
+        fragmentColor = vec4(blended, 1.0f);
     } else {
         fragmentColor = vec4(result, 1.0f);
     }

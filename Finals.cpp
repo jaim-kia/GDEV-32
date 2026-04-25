@@ -115,16 +115,11 @@ float lastY = WINDOW_HEIGHT/2.0f;
 bool firstMouse = true;
 
 #define SHADOW_SIZE 1024
-// GLuint shadowMapFbo[NUM_LIGHTS];      // shadow map framebuffer object
-// GLuint shadowMapTexture[NUM_LIGHTS];  // shadow map texture
-// std::vector<GLuint> directionalShadowFbos;
-// std::vector<GLuint> directionalShadowTextures;
+
 GLuint directionalShadowFbo;
 GLuint directionalShadowArray;
 std::vector<glm::mat4> directionalLightTransforms;
 
-// std::vector<GLuint> spotShadowFbos;
-// std::vector<GLuint> spotShadowTextures;
 GLuint spotShadowFbo;
 GLuint spotShadowArray;
 std::vector<glm::mat4> spotLightTransforms;
@@ -135,7 +130,73 @@ GLuint offsetTexture; // noise texture for PCF sampling
 #define PI 3.14159265358979323846f
 
 bool enableShadows = true;
+
+// grass toggle
 bool showGrass = true;
+
+// environment map stuff
+#define CUBEMAP_SIZE 512
+
+GLuint cubemapTexture;
+GLuint cubemapFbo;
+GLuint cubemapRbo;
+
+std::vector<float> WindowMesh = {};
+
+// hardcoded unit cube, centered at origin
+// format: pos(3) + uv(2) + normal(3) + tangent(3) = 11 floats per vertex
+float debugCubeVertices[] = {
+    // Back face (-Z), normal (0,0,-1), tangent (-1,0,0)
+    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+
+    // Front face (+Z), normal (0,0,1), tangent (1,0,0)
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
+
+    // Left face (-X), normal (-1,0,0), tangent (0,0,1)
+    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+
+    // Right face (+X), normal (1,0,0), tangent (0,0,-1)
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+
+    // Bottom face (-Y), normal (0,-1,0), tangent (1,0,0)
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  1.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+
+    // Top face (+Y), normal (0,1,0), tangent (1,0,0)
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+};
+
+GLuint debugCubeVao, debugCubeVbo;
+bool showDebugCube = true;
 
 /*------------------FISH--------------------*/
 
@@ -773,6 +834,112 @@ void setupPCF() {
 
 }
 
+bool setupCubemap() {
+    // Create the cubemap texture
+    glGenTextures(1, &cubemapTexture);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+    for (int i = 0; i < 6; i++) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+                     CUBEMAP_SIZE, CUBEMAP_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    // Create FBO
+    glGenFramebuffers(1, &cubemapFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
+
+    // Depth renderbuffer — cubemap pass needs depth testing
+    // (unlike shadow maps we need a color attachment here, so RBO handles depth)
+    glGenRenderbuffers(1, &cubemapRbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, cubemapRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, CUBEMAP_SIZE, CUBEMAP_SIZE);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cubemapRbo);
+
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Cubemap framebuffer incomplete.\n";
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+void renderCubemap() {
+    // The 6 face directions and their up vectors
+    // Order must match GL_TEXTURE_CUBE_MAP_POSITIVE_X + i
+    glm::vec3 capturePos = glm::vec3(0.0f, 5.0f, 0.0f); // adjust to your scene
+
+    struct FaceSetup {
+        glm::vec3 direction;
+        glm::vec3 up;
+    };
+
+    FaceSetup faces[6] = {
+        { glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +X
+        { glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -X
+        { glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f) }, // +Y
+        { glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f) }, // -Y
+        { glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +Z
+        { glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -Z
+    };
+
+    glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
+    glDrawBuffer(GL_COLOR_ATTACHMENT0); // re-enable color writes for the capture
+    glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
+    glUseProgram(shader);
+
+    // Upload projection — same shader as main pass
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
+                       1, GL_FALSE, glm::value_ptr(captureProjection));
+
+    // Disable flags that don't apply during cubemap capture
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"),    0);
+    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isReflective"),   0);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"),      0);
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"),    0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"),         0);
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"),  0);
+
+    for (int i = 0; i < 6; i++) {
+        // Attach this face as the color target
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                               cubemapTexture, 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glm::mat4 faceView = glm::lookAt(capturePos,
+                                         capturePos + faces[i].direction,
+                                         faces[i].up);
+
+        glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
+                           1, GL_FALSE, glm::value_ptr(faceView));
+
+        glm::mat4 identityModel = glm::mat4(1.0f);
+        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                           1, GL_FALSE, glm::value_ptr(identityModel));
+
+        // Bind a simple diffuse texture so the shader doesn't sample garbage
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[0]);
+
+        drawSceneGeometry();
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -911,6 +1078,47 @@ bool setup()
     
     // for pcf with random sampling
     setupPCF();
+
+    // After setupShadowMaps() and setupPCF():
+    if (!setupCubemap()) return false;
+
+    // Load window mesh — slot into vertex_data[3]
+    // readModelData(WindowMesh, "Finals-Data-Windows.txt");
+    
+    vertex_data[3] = WindowMesh;
+
+    // Load window texture (can be a simple tinted glass diffuse)
+    texture[5] = gdevLoadTexture("Tex-Windows.jpg", GL_REPEAT, true, true);
+    if (!texture[5]) return false;
+
+    // Bind cubemap to unit 7
+    glUseProgram(shader);
+    glUniform1i(glGetUniformLocation(shader, "cubemap"), 7);
+    glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+    glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.4f); // tune this
+
+    // Render the cubemap once — must be after all meshes are loaded
+    renderCubemap();
+
+    // Keep cubemap bound to unit 7 persistently
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+    glGenVertexArrays(1, &debugCubeVao);
+    glGenBuffers(1, &debugCubeVbo);
+    glBindVertexArray(debugCubeVao);
+    glBindBuffer(GL_ARRAY_BUFFER, debugCubeVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(debugCubeVertices), debugCubeVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+    glBindVertexArray(0);
 
     return true;
 }
@@ -1157,6 +1365,67 @@ void render()
     // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
     /*--------------------------------------------------*/
 
+    // --- Windows (reflective) ---
+    glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+
+    // Upload inverse view rotation so the shader can convert
+    // reflection vectors from camera space to world space
+    glm::mat3 invViewRot = glm::transpose(glm::mat3(viewTransform));
+    glUniformMatrix3fv(glGetUniformLocation(shader, "inverseViewRotation"),
+                    1, GL_FALSE, glm::value_ptr(invViewRot));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[5]); // window diffuse
+
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, WindowMesh.size() / 11);
+
+    // Reset
+    glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+
+    // debug cube
+    if (showDebugCube) {
+        glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
+        glUniform1i(glGetUniformLocation(shader, "hasNormal"),    0);
+        glUniform1i(glGetUniformLocation(shader, "hasSpecular"),  0);
+        glUniform1i(glGetUniformLocation(shader, "isTile"),       0);
+        glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+
+        // Place the cube somewhere visible — adjust as needed
+        glm::mat4 cubeModel = glm::mat4(1.0f);
+        cubeModel = glm::translate(cubeModel, glm::vec3(0.0f, 1.0f, 0.0f));
+        cubeModel = glm::scale(cubeModel, glm::vec3(2.0f));  // 2 unit cube
+        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                        1, GL_FALSE, glm::value_ptr(cubeModel));
+
+        // inverseViewRotation converts reflection dir from camera to world space
+        glm::mat3 invViewRot = glm::transpose(glm::mat3(viewTransform));
+        glUniformMatrix3fv(glGetUniformLocation(shader, "inverseViewRotation"),
+                        1, GL_FALSE, glm::value_ptr(invViewRot));
+
+        // No diffuse texture needed for a pure reflection test,
+        // but the shader still samples diffuseMap so bind something valid
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[5]);
+
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+        glBindVertexArray(debugCubeVao);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        // Reset
+        glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                        1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+    }
+
     // GRASS
     if (showGrass) {
         glDisable(GL_CULL_FACE);
@@ -1351,6 +1620,9 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         case GLFW_KEY_G:
             showGrass = !showGrass;
+            break;
+        case GLFW_KEY_C:
+            showDebugCube = !showDebugCube;
             break;
     }
 }
