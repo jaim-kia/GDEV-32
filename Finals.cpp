@@ -27,6 +27,10 @@ GLFWwindow *pWindow;
 std::vector<float> FloorMesh = {};
 std::vector<float> BricksParallax = {};
 std::vector<float> GrassMesh = {};
+std::vector<float> LowerBuilding = {};
+std::vector<float> LowerWindow = {};
+std::vector<float> HigherBuilding = {};
+std::vector<float> HigherWindow = {};
 // std::vector<float> fish = {};
 
 // OpenGL object IDs
@@ -38,10 +42,10 @@ GLuint instancedVboMatrix;
 GLuint shader;
 GLuint texture[12];
 
-int vertex_data_num =  5;
-GLuint vaos[5], vbos[5];
-std::vector<float> vertex_data[5];
-size_t data_sizes[5];
+int vertex_data_num =  7;
+GLuint vaos[7], vbos[7];
+std::vector<float> vertex_data[7];
+size_t data_sizes[7];
 
 double previousTime = 0.0;
 
@@ -671,6 +675,22 @@ void drawSceneGeometry() {
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
 
+    // Lower Building
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+    // Lower Window
+    glBindVertexArray(vaos[4]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+
+    // Higher Building
+    glBindVertexArray(vaos[5]);
+    glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
+
+    // Higher Window
+    glBindVertexArray(vaos[6]);
+    glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+
     // // fish
     // glBindVertexArray(instancedVao);
     // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
@@ -946,12 +966,20 @@ bool setup()
 {
     readModelData(FloorMesh, "Finals-Data-FloorMesh.txt");
     readModelData(BricksParallax, "Finals-Data-Parallax.txt");
-    // readModelData(GrassMesh, "Finals-Data-Grass.txt");
+    readModelData(LowerBuilding, "Finals-Data-LowerBuilding.txt");
+    readModelData(LowerWindow, "Finals-Data-LowerWindow.txt");
+    readModelData(HigherBuilding, "Finals-Data-HigherBuilding.txt");
+    readModelData(HigherWindow, "Finals-Data-HigherWindow.txt");
+    readModelData(GrassMesh, "Finals-Data-Grass.txt");
     // readModelData(fish, "fish_data.txt");
 
     vertex_data[0] = FloorMesh;
     vertex_data[1] = BricksParallax;
-    // vertex_data[2] = GrassMesh;
+    vertex_data[2] = GrassMesh;
+    vertex_data[3] = LowerBuilding;
+    vertex_data[4] = LowerWindow;
+    vertex_data[5] = HigherBuilding;
+    vertex_data[6] = HigherWindow;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     setupLights();
@@ -1017,10 +1045,20 @@ bool setup()
     texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
 
     // Transparent Grass:
-    texture[4] = gdevLoadTexture("Tex-Grass-Transparent.png", GL_CLAMP_TO_EDGE, true, true);
+    texture[4] = gdevLoadTexture("Tex-Grass-Diffuse.png", GL_CLAMP_TO_EDGE, true, true);
 
-    if (! texture[0] || ! texture[1] || !texture[2]
-        || !texture[3] || !texture[4])
+    // Lower Building:
+    texture[5] = gdevLoadTexture("Tex-LowerBuilding-Diffuse.png", GL_REPEAT, true, true);
+    texture[6] = gdevLoadTexture("Tex-Temporary.png", GL_REPEAT, true, true); //temporary image
+
+    // Higher Building:
+    texture[7] = gdevLoadTexture("Tex-HigherBuilding-Diffuse.png", GL_REPEAT, true, true);
+    texture[8] = gdevLoadTexture("Tex-Temporary.png", GL_REPEAT, true, true); //temporary image
+
+
+    if (! texture[0] || ! texture[1] || ! texture[2]
+        || ! texture[3] || ! texture[4] || ! texture[5]
+        || ! texture[6] || ! texture[7] || ! texture[8])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -1310,6 +1348,8 @@ void render()
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
     glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    
 
     // Renders:
     // 1) Floor Mesh: hasNormal, No for the rest
@@ -1329,6 +1369,33 @@ void render()
     glBindTexture(GL_TEXTURE_2D, texture[3]);
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
+    // 3) Lower Building: Just Use Diffuse, no normal nor specular
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[5]);
+    glBindVertexArray(vaos[3]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+    // NEED: ENV MAP
+    // 4) Lower Windows: Just Use Diffuse, no normal nor specular
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[6]);
+    glBindVertexArray(vaos[4]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+    // 5) Higher Building: Just Use Diffuse, no normal nor specular
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[5]);
+    glBindVertexArray(vaos[5]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+    // NEED: ENV MAP
+    // 6) Higher Window: Just Use Diffuse, no normal nor specular
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[8]);
+    glBindVertexArray(vaos[6]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
 
     /*---------------- INSTANCING FISH -----------------*/
