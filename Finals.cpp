@@ -8,7 +8,13 @@
  *  
  * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
  * the same set of keys to move the spotlight and mouse to adjust its direction;
- * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle. 
+ * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle.
+ *
+ * Press 5 to toggle shadows on/off
+ * Press +/= to increase PCF sample quality (more samples = softer shadows)
+ * Press - to decrease PCF sample quality (fewer samples = sharper shadows)
+ * Press ] to increase PCF radius (larger sampling area = softer shadows)
+ * Press [ to decrease PCF radius (smaller sampling area = sharper shadows)
  *****************************************************************************/
 
 #include <iostream>
@@ -42,10 +48,10 @@ GLuint instancedVboMatrix;
 GLuint shader;
 GLuint texture[12];
 
-int vertex_data_num =  7;
-GLuint vaos[7], vbos[7];
-std::vector<float> vertex_data[7];
-size_t data_sizes[7];
+int vertex_data_num =  8;
+GLuint vaos[8], vbos[8];
+std::vector<float> vertex_data[8];
+size_t data_sizes[8];
 
 double previousTime = 0.0;
 
@@ -145,12 +151,12 @@ GLuint cubemapTexture;
 GLuint cubemapFbo;
 GLuint cubemapRbo;
 
-std::vector<float> WindowMesh = {};
+bool cubemapNeedsRender = true;
+
+// std::vector<float> WindowMesh = {};
 
 // hardcoded unit cube, centered at origin
-// format: pos(3) + uv(2) + normal(3) + tangent(3) = 11 floats per vertex
 float debugCubeVertices[] = {
-    // Back face (-Z), normal (0,0,-1), tangent (-1,0,0)
     -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
      0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
      0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
@@ -158,7 +164,6 @@ float debugCubeVertices[] = {
     -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
     -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
 
-    // Front face (+Z), normal (0,0,1), tangent (1,0,0)
     -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
      0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
      0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
@@ -166,7 +171,6 @@ float debugCubeVertices[] = {
     -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
     -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
 
-    // Left face (-X), normal (-1,0,0), tangent (0,0,1)
     -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
     -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
     -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
@@ -174,7 +178,6 @@ float debugCubeVertices[] = {
     -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
     -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
 
-    // Right face (+X), normal (1,0,0), tangent (0,0,-1)
      0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
      0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
      0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
@@ -182,7 +185,6 @@ float debugCubeVertices[] = {
      0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
      0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
 
-    // Bottom face (-Y), normal (0,-1,0), tangent (1,0,0)
     -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
      0.5f, -0.5f, -0.5f,  1.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
      0.5f, -0.5f,  0.5f,  1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
@@ -190,7 +192,6 @@ float debugCubeVertices[] = {
     -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
     -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
 
-    // Top face (+Y), normal (0,1,0), tangent (1,0,0)
     -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
      0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
      0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
@@ -680,18 +681,18 @@ void drawSceneGeometry() {
     glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
     // Lower Window
-    glBindVertexArray(vaos[4]);
-    glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+    // glBindVertexArray(vaos[4]);
+    // glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
     // Higher Building
     glBindVertexArray(vaos[5]);
     glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
     // Higher Window
-    glBindVertexArray(vaos[6]);
-    glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+    // glBindVertexArray(vaos[6]);
+    // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
 
-    // // fish
+    // fish
     // glBindVertexArray(instancedVao);
     // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
 }
@@ -893,47 +894,235 @@ bool setupCubemap() {
     return true;
 }
 
+void uploadLightUniforms(const glm::mat4& viewMatrix) {
+    int spotlightCount = 0;
+    for (const auto& light : lights) {
+        switch (light->type) {
+            case Light::DIRECTIONAL: {
+                glm::vec3 viewDir = glm::mat3(viewMatrix) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
+                             1, glm::value_ptr(viewDir));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
+                             1, glm::value_ptr(light->ambient));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
+                             1, glm::value_ptr(light->diffuse));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
+                             1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
+                             1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"),
+                            light->specular_exponent);
+                break;
+            }
+            case Light::SPOTLIGHT: {
+                std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
+                spotlightCount++;
+
+                glm::vec3 posView = glm::vec3(viewMatrix * glm::vec4(light->getPosition(), 1.0f));
+                glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                             1, glm::value_ptr(posView));
+
+                glm::vec3 dirView = glm::mat3(viewMatrix) * light->getDirection();
+                glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+                             1, glm::value_ptr(dirView));
+
+                glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()),
+                            glm::cos(glm::radians(light->inner_cutoff)));
+                glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()),
+                            glm::cos(glm::radians(light->outer_cutoff)));
+                glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()),  light->constant);
+                glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()),    light->linear);
+                glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
+                glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                             1, glm::value_ptr(light->ambient));
+                glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                             1, glm::value_ptr(light->diffuse));
+                glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                             1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+                             1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()),
+                            light->specular_exponent);
+                break;
+            }
+            default: break;
+        }
+    }
+}
+
+// void renderCubemap() {
+//     glEnable(GL_DEPTH_TEST);
+//     glEnable(GL_CULL_FACE);
+//     // The 6 face directions and their up vectors
+//     // Order must match GL_TEXTURE_CUBE_MAP_POSITIVE_X + i
+//     glm::vec3 capturePos = glm::vec3(0.0f, 5.0f, 0.0f); // adjust to your scene
+
+//     struct FaceSetup {
+//         glm::vec3 direction;
+//         glm::vec3 up;
+//     };
+
+//     FaceSetup faces[6] = {
+//         { glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +X
+//         { glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -X
+//         { glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f) }, // +Y
+//         { glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f) }, // -Y
+//         { glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +Z
+//         { glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -Z
+//     };
+
+//     glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+
+//     glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
+//     glDrawBuffer(GL_COLOR_ATTACHMENT0); // re-enable color writes for the capture
+//     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
+
+//     glClearColor(0.53f, 0.81f, 0.98f, 1.0f); // light blue sky
+
+//     glUseProgram(shader);
+
+//     // Upload projection — same shader as main pass
+//     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
+//                        1, GL_FALSE, glm::value_ptr(captureProjection));
+
+
+//     glm::vec3 captureAmbient = glm::vec3(0.4f, 0.4f, 0.4f);
+//     glm::vec3 captureDiffuse = glm::vec3(0.8f, 0.8f, 0.8f);
+//     // glm::vec3 captureLightDir = glm::normalize(glm::vec3(0.5f, -1.0f, 0.5f));
+//     // transform light dir into the capture's "view" space — 
+//     // for cubemap capture we just use world space directly since we loop faces
+//     // so upload it as world-space and let each face's view handle it
+//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
+//                  1, glm::value_ptr(captureAmbient));
+//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
+//                  1, glm::value_ptr(captureDiffuse));
+//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
+//                  1, glm::value_ptr(glm::vec3(0.0f)));
+//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
+//                  1, glm::value_ptr(glm::vec3(1.0f)));
+//     glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), 32.0f);
+//     glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
+
+//     glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
+//                 1, glm::value_ptr(capturePos));
+
+//     for (int i = 0; i < 6; i++) {
+//         // Attach this face as the color target
+//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+//                                GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+//                                cubemapTexture, 0);
+//         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+//         glm::mat4 faceView = glm::lookAt(capturePos,
+//                                          capturePos + faces[i].direction,
+//                                          faces[i].up);
+
+//         glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
+//                            1, GL_FALSE, glm::value_ptr(faceView));
+
+//         glm::mat4 identityModel = glm::mat4(1.0f);
+//         glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+//                            1, GL_FALSE, glm::value_ptr(identityModel));
+
+//         // floor
+//         glActiveTexture(GL_TEXTURE0);
+//         glBindTexture(GL_TEXTURE_2D, texture[0]);
+//         glBindVertexArray(vaos[0]);
+//         glDrawArrays(GL_TRIANGLES, 0, FloorMesh.size() / 11);
+
+//         // bricks
+//         glBindTexture(GL_TEXTURE_2D, texture[2]);
+//         glBindVertexArray(vaos[1]);
+//         glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+
+//         // lower building
+//         glBindTexture(GL_TEXTURE_2D, texture[5]);
+//         glBindVertexArray(vaos[3]);
+//         glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+//         // higher building
+//         glBindTexture(GL_TEXTURE_2D, texture[7]);
+//         glBindVertexArray(vaos[5]);
+//         glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
+
+
+//         // lower windows
+//         glBindTexture(GL_TEXTURE_2D, texture[6]);
+//         glBindVertexArray(vaos[4]);
+//         glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+
+//         // higher windows
+//         glBindVertexArray(vaos[6]);
+//         glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+
+//     }
+
+//     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+//     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+// }
+
 void renderCubemap() {
-    // The 6 face directions and their up vectors
-    // Order must match GL_TEXTURE_CUBE_MAP_POSITIVE_X + i
-    glm::vec3 capturePos = glm::vec3(0.0f, 5.0f, 0.0f); // adjust to your scene
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE); // needed so floor renders from below
 
-    struct FaceSetup {
-        glm::vec3 direction;
-        glm::vec3 up;
-    };
+    glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f);
 
+    struct FaceSetup { glm::vec3 direction, up; };
     FaceSetup faces[6] = {
-        { glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +X
-        { glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -X
-        { glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f) }, // +Y
-        { glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f) }, // -Y
-        { glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +Z
-        { glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -Z
+        { glm::vec3( 1,  0,  0), glm::vec3(0, -1,  0) },
+        { glm::vec3(-1,  0,  0), glm::vec3(0, -1,  0) },
+        { glm::vec3( 0,  1,  0), glm::vec3(0,  0,  1) },
+        { glm::vec3( 0, -1,  0), glm::vec3(0,  0, -1) },
+        { glm::vec3( 0,  0,  1), glm::vec3(0, -1,  0) },
+        { glm::vec3( 0,  0, -1), glm::vec3(0, -1,  0) },
     };
 
-    glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+    glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 500.0f);
 
     glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
-    glDrawBuffer(GL_COLOR_ATTACHMENT0); // re-enable color writes for the capture
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
+    glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
     glUseProgram(shader);
 
-    // Upload projection — same shader as main pass
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
                        1, GL_FALSE, glm::value_ptr(captureProjection));
 
-    // Disable flags that don't apply during cubemap capture
     glUniform1i(glGetUniformLocation(shader, "isInstanced"),    0);
     glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
     glUniform1i(glGetUniformLocation(shader, "isReflective"),   0);
     glUniform1i(glGetUniformLocation(shader, "hasNormal"),      0);
     glUniform1i(glGetUniformLocation(shader, "hasSpecular"),    0);
     glUniform1i(glGetUniformLocation(shader, "isTile"),         0);
-    glUniform1i(glGetUniformLocation(shader, "enableShadows"),  0);
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"),  enableShadows); // use real shadows
+    glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
+    glUniform1f(glGetUniformLocation(shader, "time"),           0.0f);
+    glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
+                 1, glm::value_ptr(capturePos));
+
+    // Upload shadow maps — same as main pass, they're already computed
+    if (enableShadows) {
+        for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
+            std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+                               1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
+        }
+        for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+            std::string name = "spotLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+                               1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+        }
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
+        glActiveTexture(GL_TEXTURE12);
+        glBindTexture(GL_TEXTURE_3D, offsetTexture);
+        glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    }
 
     for (int i = 0; i < 6; i++) {
-        // Attach this face as the color target
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
                                cubemapTexture, 0);
@@ -950,14 +1139,43 @@ void renderCubemap() {
         glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                            1, GL_FALSE, glm::value_ptr(identityModel));
 
-        // Bind a simple diffuse texture so the shader doesn't sample garbage
+        // Upload real lights transformed into this face's camera space
+        uploadLightUniforms(faceView);
+
+        // Floor
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture[0]);
+        glBindVertexArray(vaos[0]);
+        glDrawArrays(GL_TRIANGLES, 0, FloorMesh.size() / 11);
 
-        drawSceneGeometry();
+        // Bricks
+        glBindTexture(GL_TEXTURE_2D, texture[2]);
+        glBindVertexArray(vaos[1]);
+        glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+
+        // Lower Building
+        glBindTexture(GL_TEXTURE_2D, texture[5]);
+        glBindVertexArray(vaos[3]);
+        glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+
+        // Higher Building
+        glBindTexture(GL_TEXTURE_2D, texture[5]);
+        glBindVertexArray(vaos[5]);
+        glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
+
+        // lower windows
+        glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse lol
+        glBindVertexArray(vaos[4]);
+        glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+
+        // higher windows
+        glBindVertexArray(vaos[6]);
+        glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glEnable(GL_CULL_FACE); // restore
 }
 
 // called by the main function to do initial setup, such as uploading vertex
@@ -981,6 +1199,7 @@ bool setup()
     vertex_data[5] = HigherBuilding;
     vertex_data[6] = HigherWindow;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
+    // vertex_data[7] = WindowMesh;
 
     setupLights();
 
@@ -1049,12 +1268,11 @@ bool setup()
 
     // Lower Building:
     texture[5] = gdevLoadTexture("Tex-LowerBuilding-Diffuse.png", GL_REPEAT, true, true);
-    texture[6] = gdevLoadTexture("Tex-Temporary.png", GL_REPEAT, true, true); //temporary image
+    texture[6] = gdevLoadTexture("Tex-Windows.jpg", GL_REPEAT, true, true); // window diffuse
 
     // Higher Building:
     texture[7] = gdevLoadTexture("Tex-HigherBuilding-Diffuse.png", GL_REPEAT, true, true);
-    texture[8] = gdevLoadTexture("Tex-Temporary.png", GL_REPEAT, true, true); //temporary image
-
+    texture[8] = gdevLoadTexture("Tex-Windows.jpg", GL_REPEAT, true, true); // window diffuse
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1117,26 +1335,17 @@ bool setup()
     // for pcf with random sampling
     setupPCF();
 
-    // After setupShadowMaps() and setupPCF():
-    if (!setupCubemap()) return false;
-
-    // Load window mesh — slot into vertex_data[3]
-    // readModelData(WindowMesh, "Finals-Data-Windows.txt");
+    if ( !setupCubemap()) 
+        return false;
     
-    vertex_data[3] = WindowMesh;
-
-    // Load window texture (can be a simple tinted glass diffuse)
-    texture[5] = gdevLoadTexture("Tex-Windows.jpg", GL_REPEAT, true, true);
-    if (!texture[5]) return false;
 
     // Bind cubemap to unit 7
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "cubemap"), 7);
     glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
-    glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.4f); // tune this
+    glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.75f); 
 
-    // Render the cubemap once — must be after all meshes are loaded
-    renderCubemap();
+    // renderCubemap();
 
     // Keep cubemap bound to unit 7 persistently
     glActiveTexture(GL_TEXTURE7);
@@ -1164,6 +1373,18 @@ bool setup()
 // called by the main function to do rendering per frame
 void render()
 {
+    // render cubemap
+    if (cubemapNeedsRender) {
+        // Run shadow passes first so cubemap capture has valid shadow maps
+        int dirIdx = 0, spotIdx = 0;
+        for (auto* light : lights) {
+            if (light->type == Light::DIRECTIONAL) renderDirectionalShadows(dirIdx++, *light);
+            else if (light->type == Light::SPOTLIGHT) renderSpotShadows(spotIdx++, *light);
+        }
+        renderCubemap();
+        cubemapNeedsRender = false;
+    }   
+
     // draw shadow map
     if (enableShadows) {
         int dirIdx = 0, spotIdx = 0;
@@ -1191,7 +1412,8 @@ void render()
 
     // using our shader program...
     glUseProgram(shader);
-
+    
+    glUniform1f(glGetUniformLocation(shader, "time"), (float)glfwGetTime());
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
     projectionTransform = glm::perspective(glm::radians(active_camera->fov),      // fov
@@ -1209,6 +1431,11 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
                        1, GL_FALSE, glm::value_ptr(viewTransform));
 
+    
+    // uploading camera position
+    glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
+             1, glm::value_ptr(active_camera->position));
+
 
     // ... set up the model matrix... (just identity for this demo)
     glm::mat4 modelTransform = glm::mat4(1.0f);
@@ -1217,103 +1444,71 @@ void render()
 
    
     // ... set up the lights and send them to the shader...
-    int spotlightCount = 0;     // 0 based indexing
-    for (const auto &light : lights) {
-        switch (light->type) {
-            case Light::DIRECTIONAL: {
-                glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
-                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
-                            1, glm::value_ptr(viewDir));
-                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
-                            1, glm::value_ptr(light->ambient));
-                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
-                            1, glm::value_ptr(light->diffuse));
-                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
-                            1, glm::value_ptr(light->specular));
-                glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
-                            1, glm::value_ptr(light->color));
-                glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), light->specular_exponent);
-                break;
-            }
-            case Light::SPOTLIGHT: {
-                std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
-                spotlightCount++;
+    // int spotlightCount = 0;     // 0 based indexing
+    // for (const auto &light : lights) {
+    //     switch (light->type) {
+    //         case Light::DIRECTIONAL: {
+    //             glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
+    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
+    //                         1, glm::value_ptr(viewDir));
+    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
+    //                         1, glm::value_ptr(light->ambient));
+    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
+    //                         1, glm::value_ptr(light->diffuse));
+    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
+    //                         1, glm::value_ptr(light->specular));
+    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
+    //                         1, glm::value_ptr(light->color));
+    //             glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), light->specular_exponent);
+    //             break;
+    //         }
+    //         case Light::SPOTLIGHT: {
+    //             std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
+    //             spotlightCount++;
 
-                glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(light->getPosition(), 1.0));
-                glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
-                            1, glm::value_ptr(posView));
+    //             glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(light->getPosition(), 1.0));
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+    //                         1, glm::value_ptr(posView));
 
-                glm::vec3 dirView = glm::mat3(viewTransform) * light->getDirection();
-                glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
-                            1, glm::value_ptr(dirView));
+    //             glm::vec3 dirView = glm::mat3(viewTransform) * light->getDirection();
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
+    //                         1, glm::value_ptr(dirView));
 
-                glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(light->inner_cutoff)));
+    //             glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(light->inner_cutoff)));
                 
-                glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(light->outer_cutoff)));
+    //             glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(light->outer_cutoff)));
                 
-                glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), light->constant);
+    //             glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), light->constant);
                 
-                glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), light->linear);
+    //             glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), light->linear);
                 
-                glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
+    //             glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
 
-                glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
-                            1, glm::value_ptr(light->ambient));
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+    //                         1, glm::value_ptr(light->ambient));
 
-                glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
-                            1, glm::value_ptr(light->diffuse));
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+    //                         1, glm::value_ptr(light->diffuse));
 
-                glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
-                            1, glm::value_ptr(light->specular));
-                glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
-                            1, glm::value_ptr(light->color));
-                glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), light->specular_exponent);
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+    //                         1, glm::value_ptr(light->specular));
+    //             glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+    //                         1, glm::value_ptr(light->color));
+    //             glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), light->specular_exponent);
             
-                break;
-            }
-            case Light::POINT: {
+    //             break;
+    //         }
+    //         case Light::POINT: {
 
-                break;
-            }
-        }
-    }
+    //             break;
+    //         }
+    //     }
+    // }
+    uploadLightUniforms(viewTransform);
     
 
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
 
-    // if (enableShadows) {
-    //     // directional lights
-    //     for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
-    //         std::string lightTransformMat = "directionalLightTransforms[" + std::to_string(i) + "]";
-    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-    //                         1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
-    
-    //         glActiveTexture(GL_TEXTURE3 + i);
-    //         glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
-    
-    //         std::string shadowMapName = "directionalShadowTextures[" + std::to_string(i) + "]";
-    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + i);
-    //     }
-    //     // spotlights
-    //     for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
-    //         std::string lightTransformMat = "spotLightTransforms[" + std::to_string(i) + "]";
-    //         glUniformMatrix4fv(glGetUniformLocation(shader, lightTransformMat.c_str()),
-    //                         1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
-    
-    //         glActiveTexture(GL_TEXTURE3 + directionalLightTransforms.size() + i);
-    //         glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
-    
-    //         std::string shadowMapName = "spotShadowTextures[" + std::to_string(i) + "]";
-    //         glUniform1i(glGetUniformLocation(shader, shadowMapName.c_str()), 3 + directionalLightTransforms.size() + i);
-    //     }
-
-    //     glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
-
-    //     glActiveTexture(GL_TEXTURE0 + 12);
-    //     glBindTexture(GL_TEXTURE_3D, offsetTexture);
-
-    //     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
-    // }
 
     if (enableShadows) {
         // Upload light-space transform matrices
@@ -1334,9 +1529,6 @@ void render()
 
         glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
-
-        // glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"),
-        //             1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
 
         glActiveTexture(GL_TEXTURE12);
         glBindTexture(GL_TEXTURE_3D, offsetTexture);
@@ -1377,25 +1569,25 @@ void render()
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
-    // NEED: ENV MAP
-    // 4) Lower Windows: Just Use Diffuse, no normal nor specular
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]);
-    glBindVertexArray(vaos[4]);
-    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+    // // NEED: ENV MAP
+    // // 4) Lower Windows: Just Use Diffuse, no normal nor specular
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[6]);
+    // glBindVertexArray(vaos[4]);
+    // glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
     // 5) Higher Building: Just Use Diffuse, no normal nor specular
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[5]);
+    glBindTexture(GL_TEXTURE_2D, texture[5]); // uses same texture as other 
     glBindVertexArray(vaos[5]);
-    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+    glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
-    // NEED: ENV MAP
-    // 6) Higher Window: Just Use Diffuse, no normal nor specular
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[8]);
-    glBindVertexArray(vaos[6]);
-    glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
+    // // NEED: ENV MAP
+    // // 6) Higher Window: Just Use Diffuse, no normal nor specular
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[8]);
+    // glBindVertexArray(vaos[6]);
+    // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
 
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -1445,15 +1637,20 @@ void render()
                     1, GL_FALSE, glm::value_ptr(invViewRot));
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[5]); // window diffuse
+    glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse
 
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
 
-    glBindVertexArray(vaos[3]);
-    glDrawArrays(GL_TRIANGLES, 0, WindowMesh.size() / 11);
+    // lower windows
+    glBindVertexArray(vaos[4]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
-    // Reset
+    // higher windows
+    glBindVertexArray(vaos[6]);
+    glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+
+    // reset
     glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
 
     // debug cube
@@ -1479,7 +1676,7 @@ void render()
         // No diffuse texture needed for a pure reflection test,
         // but the shader still samples diffuseMap so bind something valid
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture[5]);
+        glBindTexture(GL_TEXTURE_2D, texture[6]);
 
         glActiveTexture(GL_TEXTURE7);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);

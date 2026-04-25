@@ -41,6 +41,7 @@ uniform sampler2D specularMap;
 uniform sampler2DArray directionalShadowArray;
 uniform sampler2DArray spotShadowArray;
 uniform sampler2D shaderTextureSmoke;
+uniform vec3 cameraWorldPos;
 
 uniform bool enableShadows;
 uniform bool hasNormal;
@@ -246,14 +247,31 @@ void main() {
         float alpha = texture(diffuseMap, finalUV).a;
         if (alpha < alphaThreshold) discard;
         fragmentColor = vec4(result, alpha);
-    } else if (isReflective) {
-        vec3 viewDirWorld = normalize(inverseViewRotation * normalize(-shaderPosition));
-        vec3 normalWorld = normalize(inverseViewRotation * normalDir);
-        vec3 reflectDir = reflect(-viewDirWorld, normalWorld);
-        vec4 envColor = texture(cubemap, reflectDir);
-        vec3 blended = mix(result, envColor.rgb, reflectivity);
+    } 
+    else if (isReflective) {
+        // Override diffuse with a dark glass tint — ignore diffuseMap entirely
+        vec3 glassTint = vec3(0.05f, 0.07f, 0.12f); // very dark blue-grey
+        
+        // Compute ambient contribution only (no diffuse from lights for glass)
+        vec3 ambient = vec3(0.0f);
+        for (int i = 0; i < 1; i++) ambient += dir_lights[i].ambient;
+        for (int i = 0; i < 2; i++) ambient += spotlights[i].ambient;
+        ambient /= 3.0f;
+
+        vec3 glassResult = ambient * glassTint;
+
+        // Sample cubemap
+        vec3 fragWorldPos = worldSpacePosition;
+        vec3 viewDirWorld = normalize(fragWorldPos - cameraWorldPos);
+        vec3 normalWorld  = normalize(inverseViewRotation * normalDir);
+        vec3 reflectDir   = reflect(viewDirWorld, normalWorld);
+        vec4 envColor     = texture(cubemap, reflectDir);
+
+        // High reflectivity for glass — 0.7 to 0.85 reads well
+        vec3 blended = mix(glassResult, envColor.rgb, reflectivity);
         fragmentColor = vec4(blended, 1.0f);
-    } else {
+    } 
+    else {
         fragmentColor = vec4(result, 1.0f);
     }
 }
