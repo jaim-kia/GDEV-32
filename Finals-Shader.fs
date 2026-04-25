@@ -28,6 +28,22 @@ struct SpotLight {
     float specular_exponent;
 };
 
+#define MAX_POINT_LIGHTS 16
+
+struct PointLight {
+    vec3 position;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    vec3 color;
+    float specular_exponent;
+
+    float constant;
+    float linear;
+    float quadratic;
+};
+
 in vec3 shaderPosition;
 in mat3 shaderTBN;
 in vec2 shaderTexCoord;
@@ -53,6 +69,8 @@ uniform float alphaThreshold;
 
 uniform DirLight dir_lights[1];
 uniform SpotLight spotlights[2];
+uniform PointLight pointLights[MAX_POINT_LIGHTS];
+uniform int numPointLights;
 
 // uniform vec2 shadowTexelStep;
 
@@ -115,6 +133,24 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
     vec3 specular = light.specular * spec * light.color * textureSpecular;
 
     return (diffuse + specular) * intensity * attenuation;
+}
+
+vec3 CalculatePointLight(PointLight light, vec3 normal, vec3 viewDir, vec3 fragPos, vec2 uv) {
+    vec3 lightDir  = normalize(light.position - fragPos);
+    float distance = length(light.position - fragPos);
+    float attenuation = 1.0f / (light.constant 
+                               + light.linear    * distance 
+                               + light.quadratic * (distance * distance));
+
+    float diff = max(dot(normal, lightDir), 0.0f);
+    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, uv));
+
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(reflectDir, viewDir), 0.0f), light.specular_exponent);
+    vec3 textureSpecular = hasSpecular ? vec3(texture(specularMap, uv)) : vec3(0.0f);
+    vec3 specular = light.specular * spec * light.color * textureSpecular;
+
+    return (diffuse + specular) * attenuation;
 }
 
 float PCFRandomSampling(vec3 shadowCoord, sampler2DArray shadowArray, int layer) {
@@ -212,13 +248,11 @@ void main() {
 
     // average of ambient light of all light sources
     vec3 ambient = vec3(0.0f);
-    for (int i = 0; i < 1; i++) {
-        ambient += dir_lights[i].ambient;
-    }
-    for (int i = 0; i < 2; i++) {
-        ambient += spotlights[i].ambient;
-    }
-    ambient /= 3.0f; // average the ambient light contributions
+    for (int i = 0; i < 1; i++) ambient += dir_lights[i].ambient;
+    for (int i = 0; i < 2; i++) ambient += spotlights[i].ambient;
+    for (int i = 0; i < numPointLights; i++) ambient += pointLights[i].ambient;
+    int totalLights = numPointLights + 3;
+    ambient /= totalLights; // average the ambient light contributions
     
     // directional light
     for (int i = 0; i < 1; i++) {
@@ -234,6 +268,11 @@ void main() {
         
         lighting *= inShadowSpotlight(i);
         result += lighting;
+    }
+
+    // point lights
+    for (int i = 0; i < numPointLights; i++) {
+        result += CalculatePointLight(pointLights[i], normalDir, viewDir, shaderPosition, finalUV);
     }
 
     vec3 diffuseColor = vec3(texture(diffuseMap, finalUV));
@@ -267,7 +306,6 @@ void main() {
         vec3 reflectDir   = reflect(viewDirWorld, normalWorld);
         vec4 envColor     = texture(cubemap, reflectDir);
 
-        // High reflectivity for glass — 0.7 to 0.85 reads well
         vec3 blended = mix(glassResult, envColor.rgb, reflectivity);
         fragmentColor = vec4(blended, 1.0f);
     } 

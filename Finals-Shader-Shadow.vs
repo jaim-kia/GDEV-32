@@ -11,10 +11,15 @@
 #version 330 core
 
 layout (location = 0) in vec3 vertexPosition;
+layout (location = 4) in mat4 instanceMatrix;
+
 uniform mat4 lightTransform;
 uniform mat4 modelTransform;
+uniform bool isInstanced;
 
 void main()
 {
-    gl_Position = lightTransform * modelTransform * vec4(vertexPosition, 1.0f);
+    mat4 finalModel = isInstanced ? instanceMatrix : modelTransform;
+    gl_Position = lightTransform * finalModel * vec4(vertexPosition, 1.0f);
 }
+

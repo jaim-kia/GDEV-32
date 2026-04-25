@@ -37,7 +37,7 @@ std::vector<float> LowerBuilding = {};
 std::vector<float> LowerWindow = {};
 std::vector<float> HigherBuilding = {};
 std::vector<float> HigherWindow = {};
-// std::vector<float> fish = {};
+std::vector<float> InstanceMesh = {};
 
 // OpenGL object IDs
 GLuint vao;
@@ -93,6 +93,9 @@ struct Light {
     
     Camera cam;
 
+    // for fireflies. meant to be overridden
+    glm::vec3* externalPosition = nullptr;
+
     Light() {
         cam.owner = this;
     }
@@ -102,6 +105,7 @@ struct Light {
     }
 
     glm::vec3 getPosition() {
+        if (externalPosition) return *externalPosition;
         return cam.position;
     }
     glm::vec3 getDirection() {
@@ -153,8 +157,6 @@ GLuint cubemapRbo;
 
 bool cubemapNeedsRender = true;
 
-// std::vector<float> WindowMesh = {};
-
 // hardcoded unit cube, centered at origin
 float debugCubeVertices[] = {
     -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
@@ -201,12 +203,73 @@ float debugCubeVertices[] = {
 };
 
 GLuint debugCubeVao, debugCubeVbo;
-bool showDebugCube = true;
+bool showDebugCube = false;
+
+void generateDebugSphere(int stacks, int slices, float radius, std::vector<float>& data)
+{
+    data.clear();
+
+    for (int i = 0; i < stacks; ++i)
+    {
+        float phi1 = glm::pi<float>() * i / stacks;
+        float phi2 = glm::pi<float>() * (i + 1) / stacks;
+
+        for (int j = 0; j < slices; ++j)
+        {
+            float theta1 = 2.0f * glm::pi<float>() * j / slices;
+            float theta2 = 2.0f * glm::pi<float>() * (j + 1) / slices;
+
+            // 4 points of quad
+            glm::vec3 p1 = glm::vec3(sin(phi1)*cos(theta1), cos(phi1), sin(phi1)*sin(theta1)) * radius;
+            glm::vec3 p2 = glm::vec3(sin(phi2)*cos(theta1), cos(phi2), sin(phi2)*sin(theta1)) * radius;
+            glm::vec3 p3 = glm::vec3(sin(phi2)*cos(theta2), cos(phi2), sin(phi2)*sin(theta2)) * radius;
+            glm::vec3 p4 = glm::vec3(sin(phi1)*cos(theta2), cos(phi1), sin(phi1)*sin(theta2)) * radius;
+
+            glm::vec2 uv1 = glm::vec2(theta1 / (2.0f*glm::pi<float>()), phi1 / glm::pi<float>());
+            glm::vec2 uv2 = glm::vec2(theta1 / (2.0f*glm::pi<float>()), phi2 / glm::pi<float>());
+            glm::vec2 uv3 = glm::vec2(theta2 / (2.0f*glm::pi<float>()), phi2 / glm::pi<float>());
+            glm::vec2 uv4 = glm::vec2(theta2 / (2.0f*glm::pi<float>()), phi1 / glm::pi<float>());
+
+            // tangent (approx, good enough for debug)
+            glm::vec3 tangent = glm::normalize(glm::vec3(-sin(theta1), 0.0f, cos(theta1)));
+
+            auto pushVertex = [&](glm::vec3 pos, glm::vec2 uv)
+            {
+                glm::vec3 normal = glm::normalize(pos);
+
+                data.push_back(pos.x);
+                data.push_back(pos.y);
+                data.push_back(pos.z);
+
+                data.push_back(uv.x);
+                data.push_back(uv.y);
+
+                data.push_back(normal.x);
+                data.push_back(normal.y);
+                data.push_back(normal.z);
+
+                data.push_back(tangent.x);
+                data.push_back(tangent.y);
+                data.push_back(tangent.z);
+            };
+
+            // triangle 1 (FLIPPED)
+            pushVertex(p1, uv1);
+            pushVertex(p3, uv3);
+            pushVertex(p2, uv2);
+
+            // triangle 2 (FLIPPED)
+            pushVertex(p1, uv1);
+            pushVertex(p4, uv4);
+            pushVertex(p3, uv3);
+        }
+    }
+}
 
 /*------------------FISH--------------------*/
 
 // fish parameters
-const int NUM_FISH = 100;
+const int NUM_FISH = 16;
 const int DT = 16; // milliseconds per frame (~60 FPS)
 const float TURN_RATE = 0.1f; // radians per frame
 const int MAX_SPEED = 30;
@@ -277,6 +340,8 @@ struct Fish {
     float speed;
     float radius;
     glm::quat orientation;
+
+    Light* light = nullptr;
 };
 
 std::vector<Fish> fishes(NUM_FISH);
@@ -307,6 +372,16 @@ void initFish() {
         // std::cout << f.speed << std::endl;
         f.radius = 0.15f;
         f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); 
+
+        Light* fireflyLight = new Light(Light::POINT);
+        fireflyLight->externalPosition = &f.position;
+        fireflyLight->diffuse  = glm::vec3(0.8f, 0.6f, 0.2f); // warm yellow
+        fireflyLight->color    = glm::vec3(1.0f, 0.9f, 0.5f);
+        fireflyLight->constant  = 1.0f;
+        fireflyLight->linear    = 0.7f;
+        fireflyLight->quadratic = 1.8f;
+        f.light = fireflyLight;
+        lights.push_back(fireflyLight);
     }    
 }
 
@@ -396,43 +471,6 @@ glm::vec3 avoidBoundingBox(const Fish& fish, const glm::vec3& boxMin, const glm:
     return glm::normalize(toFish) * strength;
 }
 
-void computeNextFishStates_old(float time) {
-    for (auto& f : fishes) {
-        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
-        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
-        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
-
-        // get obstacles
-        glm::vec3 obstacle(0.0f);
-        for (const AABB& box : aabbs) {
-            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
-        }
-
-        // glm::vec3 steering = flow + avoid + wall + obstacle;
-
-        // glm::vec3 desiredDir = glm::normalize(steering);  
-        // glm::vec3 currentDir = glm::normalize(f.velocity);
-        // glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
-
-        // // new basis
-        // glm::vec3 forward = newDir;
-        // glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
-        // glm::vec3 up = glm::normalize(glm::cross(forward, right));
-
-        // glm::mat3 rotationMatrix(right, up, forward);
-        // f.orientation = glm::quat_cast(rotationMatrix);
-
-        // f.velocity = forward;
-        // f.position += f.velocity * f.speed * (DT / 16.0f);
-
-        glm::vec3 desiredVelocity = glm::normalize(flow + avoid + wall + obstacle);
-        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning 
-        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time 
-        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient
-
-    }
-}
-
 void computeNextFishStates(float time) {
     for (auto& f : fishes) {
         glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
@@ -445,22 +483,11 @@ void computeNextFishStates(float time) {
             obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
         }
 
-        glm::vec3 steering = flow + avoid + wall + obstacle;
+        glm::vec3 desiredVelocity = glm::normalize(flow + avoid + wall + obstacle);
+        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning 
+        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time 
+        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient
 
-        glm::vec3 desiredDir = glm::normalize(steering);  
-        glm::vec3 currentDir = glm::normalize(f.velocity);
-        glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
-
-        // new basis
-        glm::vec3 forward = newDir;
-        glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
-        glm::vec3 up = glm::normalize(glm::cross(forward, right));
-
-        glm::mat3 rotationMatrix(right, up, forward);
-        f.orientation = glm::quat_cast(rotationMatrix);
-
-        f.velocity = forward;
-        f.position += f.velocity * f.speed * (DT / 16.0f);
     }
 }
 
@@ -508,90 +535,7 @@ void setupLights() {
     }
 }
 
-// bool setupShadowMaps_old()
-// {
-//     int numDir = 0, numSpot = 0 /*, numPoint = 0*/;
-//     for (auto* light : lights) {
-//         if (light->type == Light::DIRECTIONAL) numDir++;
-//         else if (light->type == Light::SPOTLIGHT) numSpot++;
-//         // else if (light->type == Light::POINT) numPoint++;
-//     }
 
-//     // resizing vectors
-//     directionalShadowFbos.resize(numDir);
-//     directionalShadowTextures.resize(numDir);
-//     directionalLightTransforms.resize(numDir);
-
-//     spotShadowFbos.resize(numSpot);
-//     spotShadowTextures.resize(numSpot);
-//     spotLightTransforms.resize(numSpot);
-    
-//     // TODO: point lights lol
-
-//     // directional lights 
-//     for (int i = 0; i < numDir; i++) {
-//         glGenFramebuffers(1, &directionalShadowFbos[i]);
-//         glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbos[i]);
-
-//         // attach a texture object to the framebuffer
-//         glGenTextures(1, &directionalShadowTextures[i]);
-//         glBindTexture(GL_TEXTURE_2D, directionalShadowTextures[i]);
-//         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
-//                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, directionalShadowTextures[i], 0);
-        
-//         // check if we did everything right
-//         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-//         {
-//             std::cout << "Could not create custom framebuffer " << i << ".\n";
-//             return false;
-//         }
-//     }
-
-//     GLuint dirShadowArray;
-//     glGenTextures(1, &dirShadowArray);
-//     glBindTexture(GL_TEXTURE_2D_ARRAY, dirShadowArray);
-//     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE, numDir,
-//                     0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-
-//     // spotlights
-//     for (int i = 0; i < numSpot; i++) {
-//         glGenFramebuffers(1, &spotShadowFbos[i]);
-//         glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbos[i]);
-
-//         // attach a texture object to the framebuffer
-//         glGenTextures(1, &spotShadowTextures[i]);
-//         glBindTexture(GL_TEXTURE_2D, spotShadowTextures[i]);
-//         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE,
-//                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, spotShadowTextures[i], 0);
-        
-//         // check if we did everything right
-//         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-//         {
-//             std::cout << "Could not create custom framebuffer " << i << ".\n";
-//             return false;
-//         }
-//     }
-
-//     // load the shader program for drawing the shadow map
-//     shadowMapShader = gdevLoadShader("Finals-Shader-Shadow.vs", "Finals-Shader-Shadow.fs");
-//     if (! shadowMapShader)
-//         return false;
-
-//     // set the framebuffer back to the default onscreen buffer
-//     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
-//     return true;
-
-// }
 
 bool setupShadowMaps()
 {
@@ -694,7 +638,7 @@ void drawSceneGeometry() {
 
     // fish
     // glBindVertexArray(instancedVao);
-    // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+    // glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
 }
 
 void renderDirectionalShadows(int index, Light& light) {
@@ -896,6 +840,7 @@ bool setupCubemap() {
 
 void uploadLightUniforms(const glm::mat4& viewMatrix) {
     int spotlightCount = 0;
+    int pointLightCount = 0;
     for (const auto& light : lights) {
         switch (light->type) {
             case Light::DIRECTIONAL: {
@@ -945,128 +890,44 @@ void uploadLightUniforms(const glm::mat4& viewMatrix) {
                             light->specular_exponent);
                 break;
             }
+            case Light::POINT: {
+                std::string base = "pointLights[" + std::to_string(pointLightCount) + "].";
+
+                glm::vec3 posView = glm::vec3(viewMatrix * glm::vec4(light->getPosition(), 1.0f));
+                glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
+                            1, glm::value_ptr(posView));
+                glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
+                            1, glm::value_ptr(light->ambient));
+                glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
+                            1, glm::value_ptr(light->diffuse));
+                glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
+                            1, glm::value_ptr(light->specular));
+                glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
+                            1, glm::value_ptr(light->color));
+                glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()),
+                            light->specular_exponent);
+                glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()),
+                            light->constant);
+                glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()),
+                            light->linear);
+                glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()),
+                            light->quadratic);
+
+                pointLightCount++;
+                break;
+            }
             default: break;
         }
     }
+    glUniform1i(glGetUniformLocation(shader, "numPointLights"), pointLightCount); // for point lights
 }
 
-// void renderCubemap() {
-//     glEnable(GL_DEPTH_TEST);
-//     glEnable(GL_CULL_FACE);
-//     // The 6 face directions and their up vectors
-//     // Order must match GL_TEXTURE_CUBE_MAP_POSITIVE_X + i
-//     glm::vec3 capturePos = glm::vec3(0.0f, 5.0f, 0.0f); // adjust to your scene
-
-//     struct FaceSetup {
-//         glm::vec3 direction;
-//         glm::vec3 up;
-//     };
-
-//     FaceSetup faces[6] = {
-//         { glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +X
-//         { glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -X
-//         { glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f) }, // +Y
-//         { glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f) }, // -Y
-//         { glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // +Z
-//         { glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f) }, // -Z
-//     };
-
-//     glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
-
-//     glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
-//     glDrawBuffer(GL_COLOR_ATTACHMENT0); // re-enable color writes for the capture
-//     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
-
-//     glClearColor(0.53f, 0.81f, 0.98f, 1.0f); // light blue sky
-
-//     glUseProgram(shader);
-
-//     // Upload projection — same shader as main pass
-//     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
-//                        1, GL_FALSE, glm::value_ptr(captureProjection));
-
-
-//     glm::vec3 captureAmbient = glm::vec3(0.4f, 0.4f, 0.4f);
-//     glm::vec3 captureDiffuse = glm::vec3(0.8f, 0.8f, 0.8f);
-//     // glm::vec3 captureLightDir = glm::normalize(glm::vec3(0.5f, -1.0f, 0.5f));
-//     // transform light dir into the capture's "view" space — 
-//     // for cubemap capture we just use world space directly since we loop faces
-//     // so upload it as world-space and let each face's view handle it
-//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
-//                  1, glm::value_ptr(captureAmbient));
-//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
-//                  1, glm::value_ptr(captureDiffuse));
-//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
-//                  1, glm::value_ptr(glm::vec3(0.0f)));
-//     glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
-//                  1, glm::value_ptr(glm::vec3(1.0f)));
-//     glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), 32.0f);
-//     glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
-
-//     glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
-//                 1, glm::value_ptr(capturePos));
-
-//     for (int i = 0; i < 6; i++) {
-//         // Attach this face as the color target
-//         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-//                                GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-//                                cubemapTexture, 0);
-//         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-//         glm::mat4 faceView = glm::lookAt(capturePos,
-//                                          capturePos + faces[i].direction,
-//                                          faces[i].up);
-
-//         glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
-//                            1, GL_FALSE, glm::value_ptr(faceView));
-
-//         glm::mat4 identityModel = glm::mat4(1.0f);
-//         glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-//                            1, GL_FALSE, glm::value_ptr(identityModel));
-
-//         // floor
-//         glActiveTexture(GL_TEXTURE0);
-//         glBindTexture(GL_TEXTURE_2D, texture[0]);
-//         glBindVertexArray(vaos[0]);
-//         glDrawArrays(GL_TRIANGLES, 0, FloorMesh.size() / 11);
-
-//         // bricks
-//         glBindTexture(GL_TEXTURE_2D, texture[2]);
-//         glBindVertexArray(vaos[1]);
-//         glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
-
-//         // lower building
-//         glBindTexture(GL_TEXTURE_2D, texture[5]);
-//         glBindVertexArray(vaos[3]);
-//         glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
-
-//         // higher building
-//         glBindTexture(GL_TEXTURE_2D, texture[7]);
-//         glBindVertexArray(vaos[5]);
-//         glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
-
-
-//         // lower windows
-//         glBindTexture(GL_TEXTURE_2D, texture[6]);
-//         glBindVertexArray(vaos[4]);
-//         glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
-
-//         // higher windows
-//         glBindVertexArray(vaos[6]);
-//         glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
-
-//     }
-
-//     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-//     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-// }
 
 void renderCubemap() {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE); // needed so floor renders from below
 
-    glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f);
+    glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f); // TODO: add multiple capture positions
 
     struct FaceSetup { glm::vec3 direction, up; };
     FaceSetup faces[6] = {
@@ -1189,7 +1050,8 @@ bool setup()
     readModelData(HigherBuilding, "Finals-Data-HigherBuilding.txt");
     readModelData(HigherWindow, "Finals-Data-HigherWindow.txt");
     readModelData(GrassMesh, "Finals-Data-Grass.txt");
-    // readModelData(fish, "fish_data.txt");
+    // readModelData(InstanceMesh, "fish_data.txt");
+    generateDebugSphere(8, 8, 0.1f, InstanceMesh);
 
     vertex_data[0] = FloorMesh;
     vertex_data[1] = BricksParallax;
@@ -1198,8 +1060,10 @@ bool setup()
     vertex_data[4] = LowerWindow;
     vertex_data[5] = HigherBuilding;
     vertex_data[6] = HigherWindow;
+    vertex_data[7] = InstanceMesh;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
-    // vertex_data[7] = WindowMesh;
+
+    initFish(); // since fireflies have lights lol
 
     setupLights();
 
@@ -1272,7 +1136,9 @@ bool setup()
 
     // Higher Building:
     texture[7] = gdevLoadTexture("Tex-HigherBuilding-Diffuse.png", GL_REPEAT, true, true);
-    texture[8] = gdevLoadTexture("Tex-Windows.jpg", GL_REPEAT, true, true); // window diffuse
+
+    // Instanced Model:
+    texture[8] = gdevLoadTexture("Tex-Firefly-Diffuse.png", GL_REPEAT, true, true); // temporary fish
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1280,50 +1146,49 @@ bool setup()
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
-    // initFish();
-    // makeAABBs(); 
+    makeAABBs(); 
 
-    // glGenVertexArrays(1, &instancedVao);
-    // glGenBuffers(1, &instancedVbo);      
-    // glGenBuffers(1, &instancedVboMatrix); 
+    glGenVertexArrays(1, &instancedVao);
+    glGenBuffers(1, &instancedVbo);      
+    glGenBuffers(1, &instancedVboMatrix); 
 
-    // glBindVertexArray(instancedVao);
+    glBindVertexArray(instancedVao);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
-    // glBufferData(GL_ARRAY_BUFFER, fish.size() * sizeof(float), fish.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVbo);
+    glBufferData(GL_ARRAY_BUFFER, InstanceMesh.size() * sizeof(float), InstanceMesh.data(), GL_STATIC_DRAW);
 
-    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
-    // glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
-    // glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
-    // glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
 
-    // glEnableVertexAttribArray(0);
-    // glEnableVertexAttribArray(1);
-    // glEnableVertexAttribArray(2);
-    // glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBufferData(GL_ARRAY_BUFFER, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data(), GL_STATIC_DRAW);
     
-    // GLuint instancedVaoMatrix = instancedVao;
-    // glBindVertexArray(instancedVaoMatrix);
+    GLuint instancedVaoMatrix = instancedVao;
+    glBindVertexArray(instancedVaoMatrix);
 
-    // std::size_t vec4Size = sizeof(glm::vec4);
-    // glEnableVertexAttribArray(4);
-    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
-    // glEnableVertexAttribArray(5);
-    // glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
-    // glEnableVertexAttribArray(6);
-    // glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
-    // glEnableVertexAttribArray(7);
-    // glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
-    // glVertexAttribDivisor(4, 1);
-    // glVertexAttribDivisor(5, 1);
-    // glVertexAttribDivisor(6, 1);
-    // glVertexAttribDivisor(7, 1);
+    std::size_t vec4Size = sizeof(glm::vec4);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+    glVertexAttribDivisor(7, 1);
 
-    // glBindVertexArray(0);
+    glBindVertexArray(0);
     /*--------------------------------------------------*/
 
     glEnable(GL_DEPTH_TEST);
@@ -1343,7 +1208,7 @@ bool setup()
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(shader, "cubemap"), 7);
     glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
-    glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.75f); 
+    glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.5f); 
 
     // renderCubemap();
 
@@ -1443,67 +1308,7 @@ void render()
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
    
-    // ... set up the lights and send them to the shader...
-    // int spotlightCount = 0;     // 0 based indexing
-    // for (const auto &light : lights) {
-    //     switch (light->type) {
-    //         case Light::DIRECTIONAL: {
-    //             glm::vec3 viewDir = glm::mat3(viewTransform) * light->getDirection();
-    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].direction"),
-    //                         1, glm::value_ptr(viewDir));
-    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].ambient"),
-    //                         1, glm::value_ptr(light->ambient));
-    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].diffuse"),
-    //                         1, glm::value_ptr(light->diffuse));
-    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].specular"),
-    //                         1, glm::value_ptr(light->specular));
-    //             glUniform3fv(glGetUniformLocation(shader, "dir_lights[0].color"),
-    //                         1, glm::value_ptr(light->color));
-    //             glUniform1f(glGetUniformLocation(shader, "dir_lights[0].specular_exponent"), light->specular_exponent);
-    //             break;
-    //         }
-    //         case Light::SPOTLIGHT: {
-    //             std::string base = "spotlights[" + std::to_string(spotlightCount) + "].";
-    //             spotlightCount++;
-
-    //             glm::vec3 posView = glm::vec3(viewTransform * glm::vec4(light->getPosition(), 1.0));
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "position").c_str()),
-    //                         1, glm::value_ptr(posView));
-
-    //             glm::vec3 dirView = glm::mat3(viewTransform) * light->getDirection();
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "direction").c_str()),
-    //                         1, glm::value_ptr(dirView));
-
-    //             glUniform1f(glGetUniformLocation(shader, (base + "innerCutoff").c_str()), glm::cos(glm::radians(light->inner_cutoff)));
-                
-    //             glUniform1f(glGetUniformLocation(shader, (base + "outerCutoff").c_str()), glm::cos(glm::radians(light->outer_cutoff)));
-                
-    //             glUniform1f(glGetUniformLocation(shader, (base + "constant").c_str()), light->constant);
-                
-    //             glUniform1f(glGetUniformLocation(shader, (base + "linear").c_str()), light->linear);
-                
-    //             glUniform1f(glGetUniformLocation(shader, (base + "quadratic").c_str()), light->quadratic);
-
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "ambient").c_str()),
-    //                         1, glm::value_ptr(light->ambient));
-
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "diffuse").c_str()),
-    //                         1, glm::value_ptr(light->diffuse));
-
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "specular").c_str()),
-    //                         1, glm::value_ptr(light->specular));
-    //             glUniform3fv(glGetUniformLocation(shader, (base + "color").c_str()),
-    //                         1, glm::value_ptr(light->color));
-    //             glUniform1f(glGetUniformLocation(shader, (base + "specular_exponent").c_str()), light->specular_exponent);
-            
-    //             break;
-    //         }
-    //         case Light::POINT: {
-
-    //             break;
-    //         }
-    //     }
-    // }
+    
     uploadLightUniforms(viewTransform);
     
 
@@ -1569,12 +1374,6 @@ void render()
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
-    // // NEED: ENV MAP
-    // // 4) Lower Windows: Just Use Diffuse, no normal nor specular
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[6]);
-    // glBindVertexArray(vaos[4]);
-    // glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
     // 5) Higher Building: Just Use Diffuse, no normal nor specular
     glActiveTexture(GL_TEXTURE0);
@@ -1582,46 +1381,40 @@ void render()
     glBindVertexArray(vaos[5]);
     glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
-    // // NEED: ENV MAP
-    // // 6) Higher Window: Just Use Diffuse, no normal nor specular
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[8]);
-    // glBindVertexArray(vaos[6]);
-    // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
-
 
     /*---------------- INSTANCING FISH -----------------*/
-    // computeNextFishStates(static_cast<float>(glfwGetTime()));
+    computeNextFishStates(static_cast<float>(glfwGetTime()));
 
-    // // update fish matrices
-    // for (int i = 0; i < NUM_FISH; i++) {
-    //     const Fish& f = fishes[i];
-    //     glm::mat4 m = glm::mat4(1.0f);
-    //     m = glm::translate(m, f.position);
-    //     m *= glm::mat4_cast(f.orientation);
-    //     // m = glm::scale(m, glm::vec3(0.5f));
-    //     fishMatrices[i] = m;
-    // }
+    // update fish matrices
+    for (int i = 0; i < NUM_FISH; i++) {
+        const Fish& f = fishes[i];
+        glm::mat4 m = glm::mat4(1.0f);
+        m = glm::translate(m, f.position);
+        m *= glm::mat4_cast(f.orientation);
+        // m = glm::scale(m, glm::vec3(0.5f));
+        fishMatrices[i] = m;
+    }
 
-    // glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
-    // glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
+    glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, fishMatrices.size() * sizeof(glm::mat4), fishMatrices.data());
 
-    // glUseProgram(shader);
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
-    // glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
+    glUseProgram(shader);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
 
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[7]);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[8]);
     // glActiveTexture(GL_TEXTURE1);
     // glBindTexture(GL_TEXTURE_2D, texture[10]);
     // glActiveTexture(GL_TEXTURE2);
     // glBindTexture(GL_TEXTURE_2D, texture[11]);
-    // // glUniform1i(glGetUniformLocation(shader, "diffuseMap"), 0);
 
 
-    // glBindVertexArray(instancedVao);
-    // glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
+    glBindVertexArray(instancedVao);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
+
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
     /*--------------------------------------------------*/
 
     // --- Windows (reflective) ---
