@@ -37,6 +37,9 @@ std::vector<float> LowerBuilding = {};
 std::vector<float> LowerWindow = {};
 std::vector<float> HigherBuilding = {};
 std::vector<float> HigherWindow = {};
+std::vector<float> TreeBark = {};
+std::vector<float> TreeLeaves = {};
+std::vector<float> MirrorPlane = {};
 std::vector<float> InstanceMesh = {};
 
 // OpenGL object IDs
@@ -46,12 +49,12 @@ GLuint instancedVao;
 GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
-GLuint texture[12];
+GLuint texture[11];
 
-int vertex_data_num =  8;
-GLuint vaos[8], vbos[8];
-std::vector<float> vertex_data[8];
-size_t data_sizes[8];
+int vertex_data_num =  11;
+GLuint vaos[11], vbos[11];
+std::vector<float> vertex_data[11];
+size_t data_sizes[11];
 
 double previousTime = 0.0;
 
@@ -636,9 +639,15 @@ void drawSceneGeometry() {
     // glBindVertexArray(vaos[6]);
     // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
 
+    glBindVertexArray(vaos[8]);
+    glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
+
     // fish
     // glBindVertexArray(instancedVao);
     // glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
+
+    glBindVertexArray(vaos[10]);
+    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 }
 
 void renderDirectionalShadows(int index, Light& light) {
@@ -1019,6 +1028,18 @@ void renderCubemap() {
         glBindVertexArray(vaos[3]);
         glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
+        // Tree Bark
+        glBindTexture(GL_TEXTURE_2D, texture[9]);
+        glBindVertexArray(vaos[8]);
+        glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
+
+        // Mirror
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
+        glBindVertexArray(vaos[10]);
+        glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+
         // Higher Building
         glBindTexture(GL_TEXTURE_2D, texture[5]);
         glBindVertexArray(vaos[5]);
@@ -1050,6 +1071,9 @@ bool setup()
     readModelData(HigherBuilding, "Finals-Data-HigherBuilding.txt");
     readModelData(HigherWindow, "Finals-Data-HigherWindow.txt");
     readModelData(GrassMesh, "Finals-Data-Grass.txt");
+    readModelData(TreeBark, "Finals-Data-Tree.txt");
+    readModelData(TreeLeaves, "Finals-Data-Leaves.txt");
+    readModelData(MirrorPlane, "Finals-Data-MirrorPlane.txt");
     // readModelData(InstanceMesh, "fish_data.txt");
     generateDebugSphere(8, 8, 0.1f, InstanceMesh);
 
@@ -1061,6 +1085,9 @@ bool setup()
     vertex_data[5] = HigherBuilding;
     vertex_data[6] = HigherWindow;
     vertex_data[7] = InstanceMesh;
+    vertex_data[8] = TreeBark;
+    vertex_data[9] = TreeLeaves;
+    vertex_data[10] = MirrorPlane;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     initFish(); // since fireflies have lights lol
@@ -1140,9 +1167,17 @@ bool setup()
     // Instanced Model:
     texture[8] = gdevLoadTexture("Tex-Firefly-Diffuse.png", GL_REPEAT, true, true); // temporary fish
 
+    // Tree Bark:
+    texture[9] = gdevLoadTexture("Tex-TreeBark-Diffuse.png", GL_REPEAT, true, true);
+
+    // Tree Leaves:
+    texture[10] = gdevLoadTexture("Tex-TreeLeavesUnblended-Diffuse.png", GL_REPEAT, true, true);
+
+
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
-        || ! texture[6] || ! texture[7] || ! texture[8])
+        || ! texture[6] || ! texture[7] || ! texture[8]
+        || ! texture[9] || ! texture[10])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -1382,6 +1417,20 @@ void render()
     glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
 
+    // 5) Tree Bark: Just Use Diffuse, no normal nor specular
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[9]); // uses same texture as other 
+    glBindVertexArray(vaos[8]);
+    glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
+
+    // 5) Mirror Plane
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
+    glBindVertexArray(vaos[10]);
+    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+
+
     /*---------------- INSTANCING FISH -----------------*/
     computeNextFishStates(static_cast<float>(glfwGetTime()));
 
@@ -1501,9 +1550,13 @@ void render()
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture[4]);
-
         glBindVertexArray(vaos[2]);
         glDrawArrays(GL_TRIANGLES, 0, GrassMesh.size() / 11);
+
+        // glActiveTexture(GL_TEXTURE0);
+        // glBindTexture(GL_TEXTURE_2D, texture[10]);
+        // glBindVertexArray(vaos[9]);
+        // glDrawArrays(GL_TRIANGLES, 0, TreeLeaves.size() / 11);
 
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
