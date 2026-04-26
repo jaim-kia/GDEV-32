@@ -278,6 +278,29 @@ void generateDebugSphere(int stacks, int slices, float radius, std::vector<float
     }
 }
 
+// bloom stuff
+GLuint bloomThresholdShader;
+GLuint bloomBlurShader;
+GLuint bloomCompositeShader;
+
+GLuint hdrFbo;
+GLuint hdrColorTexture;  // float texture — the scene
+GLuint hdrDepthRbo;
+
+GLuint pingFbo, pongFbo;
+GLuint pingTexture, pongTexture;
+
+// Fullscreen quad VAO
+GLuint quadVao, quadVbo;
+
+float bloomThreshold = 1.0f;  // pixels brighter than this get bloomed
+float bloomStrength = 1.0f;  // how much bloom adds on top
+float bloomExposure = 0.5f;  // tone mapping exposure
+int bloomPasses = 10;    // number of blur iterations — more = wider glow
+
+bool enableBloom = true;
+
+float lastPrintTime = 0.0f; // for debugging camera position printouts
 /*------------------FISH--------------------*/
 
 // fish parameters
@@ -971,8 +994,9 @@ void uploadLightUniforms(const glm::mat4& viewMatrix) {
 void renderCubemap() {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE); // needed so floor renders from below
+    // glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f); // TODO: add multiple capture positions
 
-    glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f); // TODO: add multiple capture positions
+    glm::vec3 capturePos = glm::vec3(-12.4638, 2.2572, -5.79182); // TODO: add multiple capture positions
 
     struct FaceSetup { glm::vec3 direction, up; };
     FaceSetup faces[6] = {
@@ -1149,6 +1173,106 @@ void renderCubemap() {
     glEnable(GL_CULL_FACE); // restore
 }
 
+bool setupBloom() {
+    int w = WINDOW_WIDTH, h = WINDOW_HEIGHT;
+
+    // --- HDR framebuffer ---
+    glGenFramebuffers(1, &hdrFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFbo);
+
+    // Float texture for HDR color
+    glGenTextures(1, &hdrColorTexture);
+    glBindTexture(GL_TEXTURE_2D, hdrColorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, hdrColorTexture, 0);
+
+    // Depth renderbuffer
+    glGenRenderbuffers(1, &hdrDepthRbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              GL_RENDERBUFFER, hdrDepthRbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "HDR framebuffer incomplete.\n";
+        return false;
+    }
+
+    // --- Ping-pong framebuffers for blur ---
+    GLuint pingpongFbos[2] = {pingFbo, pongFbo};
+    GLuint pingpongTextures[2] = {pingTexture, pongTexture};
+    glGenFramebuffers(2, pingpongFbos);
+    glGenTextures(2, pingpongTextures);
+    pingFbo = pingpongFbos[0]; pongFbo = pingpongFbos[1];
+    pingTexture = pingpongTextures[0]; pongTexture = pingpongTextures[1];
+
+    for (int i = 0; i < 2; i++) {
+        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFbos[i]);
+        glBindTexture(GL_TEXTURE_2D, pingpongTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, pingpongTextures[i], 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cout << "Ping-pong framebuffer " << i << " incomplete.\n";
+            return false;
+        }
+    }
+
+    // --- Fullscreen quad ---
+    float quadVertices[] = {
+        // x      y      u     v
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f,
+    };
+
+    glGenVertexArrays(1, &quadVao);
+    glGenBuffers(1, &quadVbo);
+    glBindVertexArray(quadVao);
+    glBindBuffer(GL_ARRAY_BUFFER, quadVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
+
+    // --- Load bloom shaders ---
+    bloomThresholdShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Threshold.fs");
+    bloomBlurShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Blur.fs");
+    bloomCompositeShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Composite.fs");
+
+    if (!bloomThresholdShader || !bloomBlurShader || !bloomCompositeShader)
+        return false;
+
+    // Set sampler uniforms once
+    glUseProgram(bloomThresholdShader);
+    glUniform1i(glGetUniformLocation(bloomThresholdShader, "hdrScene"), 0);
+
+    glUseProgram(bloomBlurShader);
+    glUniform1i(glGetUniformLocation(bloomBlurShader, "image"), 0);
+
+    glUseProgram(bloomCompositeShader);
+    glUniform1i(glGetUniformLocation(bloomCompositeShader, "hdrScene"),  0);
+    glUniform1i(glGetUniformLocation(bloomCompositeShader, "bloomBlur"), 1);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
 // called by the main function to do initial setup, such as uploading vertex
 // arrays, shader programs, etc.; returns true if successful, false otherwise
 bool setup()
@@ -1173,7 +1297,7 @@ bool setup()
     readModelData(LampPost, "Finals-Data-LampPost.txt");
     readModelData(LampBulb, "Finals-Data-LampBulb.txt");
     // readModelData(InstanceMesh, "fish_data.txt");
-    generateDebugSphere(8, 8, 0.1f, InstanceMesh);
+    generateDebugSphere(4, 4, 0.05f, InstanceMesh);
 
     vertex_data[0] = FloorMesh;
     vertex_data[1] = BricksParallax;
@@ -1381,6 +1505,8 @@ bool setup()
     if ( !setupCubemap()) 
         return false;
     
+    if (!setupBloom()) return false;
+
 
     // Bind cubemap to unit 7
     glUseProgram(shader);
@@ -1443,6 +1569,8 @@ void render()
             }
         }
     }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFbo); // bind HDR framebuffer for main scene rendering
 
     // before drawing the final scene, we need to set drawing to the whole window
     int width, height;
@@ -1640,14 +1768,17 @@ void render()
     glBindVertexArray(vaos[18]);
     glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
 
+    glUniform1i(glGetUniformLocation(shader, "isEmissive"), 1); // for bloom on lamp bulbs
+    glUniform3f(glGetUniformLocation(shader, "emissiveColor"), 3.0f, 2.5f, 1.5f);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[26]);
     glBindVertexArray(vaos[19]);
     glDrawArrays(GL_TRIANGLES, 0, LampBulb.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "isEmissive"),  0);
 
 
     /*---------------- INSTANCING FISH -----------------*/
-    computeNextFishStates(static_cast<float>(glfwGetTime()));
+    // computeNextFishStates(static_cast<float>(glfwGetTime()));
 
     // update fish matrices
     for (int i = 0; i < NUM_FISH; i++) {
@@ -1666,6 +1797,8 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
     glUniform1i(glGetUniformLocation(shader, "isInstanced"), 1);
+    glUniform1i(glGetUniformLocation(shader, "isEmissive"),  1);
+    glUniform3f(glGetUniformLocation(shader, "emissiveColor"), 2.5f, 2.0f, 0.8f);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[8]);
@@ -1673,12 +1806,13 @@ void render()
     // glBindTexture(GL_TEXTURE_2D, texture[10]);
     // glActiveTexture(GL_TEXTURE2);
     // glBindTexture(GL_TEXTURE_2D, texture[11]);
-
-
+    
+    
     glBindVertexArray(instancedVao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
-
+    
     glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isEmissive"),  0);
     /*--------------------------------------------------*/
 
     // --- Windows (reflective) ---
@@ -1776,6 +1910,73 @@ void render()
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
         glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    }
+
+    // pass 2: post process bloom
+    glDisable(GL_DEPTH_TEST); // depth not needed for post process
+    if (enableBloom) {
+        glBindFramebuffer(GL_FRAMEBUFFER, pingFbo);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(bloomThresholdShader);
+        glUniform1f(glGetUniformLocation(bloomThresholdShader, "threshold"), bloomThreshold);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, hdrColorTexture);
+        glBindVertexArray(quadVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // pass 3: ping pong gaussian blur
+        glUseProgram(bloomBlurShader);
+        bool horizontal = true;
+        for (int i = 0; i < bloomPasses; i++) {
+            glBindFramebuffer(GL_FRAMEBUFFER, horizontal ? pongFbo : pingFbo);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glUniform1i(glGetUniformLocation(bloomBlurShader, "horizontal"), horizontal);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, horizontal ? pingTexture : pongTexture);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            horizontal = !horizontal;
+        }
+
+        GLuint blurResult = (bloomPasses % 2 == 0) ? pingTexture : pongTexture;
+
+        // pass 4: composite bloom with original scene
+        glBindFramebuffer(GL_FRAMEBUFFER, 0); // back to default screen framebuffer
+        glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(bloomCompositeShader);
+        glUniform1f(glGetUniformLocation(bloomCompositeShader, "bloomStrength"), bloomStrength);
+        glUniform1f(glGetUniformLocation(bloomCompositeShader, "exposure"),      bloomExposure);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, hdrColorTexture); // original scene
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, blurResult); // blurred bright regions
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    else { // for tonemap and gamma correction without bloom since scene is rendered in HDR framebuffer and not directly to screen
+       glDisable(GL_DEPTH_TEST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(bloomCompositeShader);
+        glUniform1f(glGetUniformLocation(bloomCompositeShader, "bloomStrength"), 0.0f); // no bloom added
+        glUniform1f(glGetUniformLocation(bloomCompositeShader, "exposure"),      bloomExposure);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, hdrColorTexture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, pingTexture); // bind something valid — multiplied by 0 anyway
+        glBindVertexArray(quadVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6); 
+    }
+    
+    glEnable(GL_DEPTH_TEST); // restore for next frame
+
+    // print main camera pos every 1 second for debugging
+    if (glfwGetTime() - lastPrintTime >= 1.0f) {
+        std::cout << "Camera Position: (" 
+                  << active_camera->position.x << ", " 
+                  << active_camera->position.y << ", " 
+                  << active_camera->position.z << ")" << std::endl;
+        lastPrintTime = glfwGetTime();
     }
 
 }
@@ -1948,6 +2149,9 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         case GLFW_KEY_C:
             showDebugCube = !showDebugCube;
+            break;
+        case GLFW_KEY_B:
+            enableBloom = !enableBloom;
             break;
     }
 }

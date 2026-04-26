@@ -86,6 +86,10 @@ uniform float reflectivity;
 uniform samplerCube cubemap;
 uniform mat3 inverseViewRotation;
 
+// bloom stuff
+uniform bool isEmissive;
+uniform vec3 emissiveColor;
+
 out vec4 fragmentColor;
 
 vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir, vec2 uv) {
@@ -277,12 +281,15 @@ void main() {
 
     vec3 diffuseColor = vec3(texture(diffuseMap, finalUV));
     result += ambient * diffuseColor;
-    result += diffuseColor * 0.2f;
+    // result += diffuseColor * 0.05f;
 
     // result = vec3(0.5f);
     // fragmentColor = vec4(result, 1.0f);
 
-    if (isAlphaBlended) {
+    if (isEmissive) {
+        fragmentColor = vec4(emissiveColor, 1.0);
+    }
+    else if (isAlphaBlended) {
         float alpha = texture(diffuseMap, finalUV).a;
         if (alpha < alphaThreshold) discard;
         fragmentColor = vec4(result, alpha);
