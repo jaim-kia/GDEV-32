@@ -40,6 +40,15 @@ std::vector<float> HigherWindow = {};
 std::vector<float> TreeBark = {};
 std::vector<float> TreeLeaves = {};
 std::vector<float> MirrorPlane = {};
+std::vector<float> SideStation = {};
+std::vector<float> Office = {};
+std::vector<float> BusStation = {};
+std::vector<float> Miscellaneous = {};
+std::vector<float> Water = {};
+std::vector<float> TrainStation = {};
+std::vector<float> TrainCart = {};
+std::vector<float> LampPost = {};
+std::vector<float> LampBulb = {};
 std::vector<float> InstanceMesh = {};
 
 // OpenGL object IDs
@@ -49,12 +58,12 @@ GLuint instancedVao;
 GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
-GLuint texture[11];
+GLuint texture[27];
 
-int vertex_data_num =  11;
-GLuint vaos[11], vbos[11];
-std::vector<float> vertex_data[11];
-size_t data_sizes[11];
+int vertex_data_num =  20;
+GLuint vaos[20], vbos[20];
+std::vector<float> vertex_data[20];
+size_t data_sizes[20];
 
 double previousTime = 0.0;
 
@@ -648,6 +657,33 @@ void drawSceneGeometry() {
 
     glBindVertexArray(vaos[10]);
     glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+    glBindVertexArray(vaos[11]);
+    glDrawArrays(GL_TRIANGLES, 0, SideStation.size() / 11);
+
+    glBindVertexArray(vaos[12]);
+    glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
+
+    glBindVertexArray(vaos[13]);
+    glDrawArrays(GL_TRIANGLES, 0, BusStation.size() / 11);
+
+    glBindVertexArray(vaos[14]);
+    glDrawArrays(GL_TRIANGLES, 0, Miscellaneous.size() / 11);
+
+    glBindVertexArray(vaos[15]);
+    glDrawArrays(GL_TRIANGLES, 0, Water.size() / 11);
+
+    glBindVertexArray(vaos[16]);
+    glDrawArrays(GL_TRIANGLES, 0, TrainStation.size() / 11);
+
+    glBindVertexArray(vaos[17]);
+    glDrawArrays(GL_TRIANGLES, 0, TrainCart.size() / 11);
+
+    glBindVertexArray(vaos[18]);
+    glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
+
+    glBindVertexArray(vaos[19]);
+    glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
 }
 
 void renderDirectionalShadows(int index, Light& light) {
@@ -1039,6 +1075,59 @@ void renderCubemap() {
         glBindVertexArray(vaos[10]);
         glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
+        // Side Station
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[11]);
+        glBindVertexArray(vaos[11]);
+        glDrawArrays(GL_TRIANGLES, 0, SideStation.size() / 11);
+
+        // Office
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[12]);
+        glBindVertexArray(vaos[12]);
+        glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
+
+        // Bus Station
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[14]);
+        glBindVertexArray(vaos[13]);
+        glDrawArrays(GL_TRIANGLES, 0, BusStation.size() / 11);
+
+        // Miscellaneous
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[16]);
+        glBindVertexArray(vaos[14]);
+        glDrawArrays(GL_TRIANGLES, 0, Miscellaneous.size() / 11);
+
+        // Water
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[18]);
+        glBindVertexArray(vaos[15]);
+        glDrawArrays(GL_TRIANGLES, 0, Water.size() / 11);
+
+        // Train Station
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[19]);
+        glBindVertexArray(vaos[16]);
+        glDrawArrays(GL_TRIANGLES, 0, TrainStation.size() / 11);
+
+        // Train Cart
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[22]);
+        glBindVertexArray(vaos[17]);
+        glDrawArrays(GL_TRIANGLES, 0, TrainCart.size() / 11);
+
+        // Lamp Post
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[25]);
+        glBindVertexArray(vaos[18]);
+        glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
+
+        // Lamp Bulb
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[26]);
+        glBindVertexArray(vaos[19]);
+        glDrawArrays(GL_TRIANGLES, 0, LampBulb.size() / 11);
 
         // Higher Building
         glBindTexture(GL_TEXTURE_2D, texture[5]);
@@ -1074,6 +1163,15 @@ bool setup()
     readModelData(TreeBark, "Finals-Data-Tree.txt");
     readModelData(TreeLeaves, "Finals-Data-Leaves.txt");
     readModelData(MirrorPlane, "Finals-Data-MirrorPlane.txt");
+    readModelData(SideStation, "Finals-Data-SideStation.txt");
+    readModelData(Office, "Finals-Data-Office.txt");
+    readModelData(BusStation, "Finals-Data-BusStation.txt");
+    readModelData(Miscellaneous, "Finals-Data-Misc.txt");
+    readModelData(Water, "Finals-Data-Water.txt");
+    readModelData(TrainStation, "Finals-Data-Station.txt");
+    readModelData(TrainCart, "Finals-Data-TrainCart.txt");
+    readModelData(LampPost, "Finals-Data-LampPost.txt");
+    readModelData(LampBulb, "Finals-Data-LampBulb.txt");
     // readModelData(InstanceMesh, "fish_data.txt");
     generateDebugSphere(8, 8, 0.1f, InstanceMesh);
 
@@ -1088,6 +1186,15 @@ bool setup()
     vertex_data[8] = TreeBark;
     vertex_data[9] = TreeLeaves;
     vertex_data[10] = MirrorPlane;
+    vertex_data[11] = SideStation;
+    vertex_data[12] = Office;
+    vertex_data[13] = BusStation;
+    vertex_data[14] = Miscellaneous;
+    vertex_data[15] = Water;
+    vertex_data[16] = TrainStation;
+    vertex_data[17] = TrainCart;
+    vertex_data[18] = LampPost;
+    vertex_data[19] = LampBulb;
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     initFish(); // since fireflies have lights lol
@@ -1173,11 +1280,47 @@ bool setup()
     // Tree Leaves:
     texture[10] = gdevLoadTexture("Tex-TreeLeavesUnblended-Diffuse.png", GL_REPEAT, true, true);
 
+    // Side Station:
+    texture[11] = gdevLoadTexture("Tex-SideStation-Diffuse.png", GL_REPEAT, true, true);
+
+    // Office:
+    texture[12] = gdevLoadTexture("Tex-Office-Diffuse.png", GL_REPEAT, true, true);
+    texture[13] = gdevLoadTexture("Tex-Office-Normals.png", GL_REPEAT, true, true);
+
+    // Bus Station:
+    texture[14] = gdevLoadTexture("Tex-BusSta-Diffuse.png", GL_REPEAT, true, true);
+    texture[15] = gdevLoadTexture("Tex-BusSta-Normals.png", GL_REPEAT, true, true);
+
+    // Miscelleanous:
+    texture[16] = gdevLoadTexture("Tex-Misc-Diffuse.png", GL_REPEAT, true, true);
+    texture[17] = gdevLoadTexture("Tex-Misc-Normals.png", GL_REPEAT, true, true);
+
+    // Water:
+    texture[18] = gdevLoadTexture("Tex-Water-Diffuse.png", GL_REPEAT, true, true);
+
+    // Station:
+    texture[19] = gdevLoadTexture("Tex-Station-Diffuse.png", GL_REPEAT, true, true);
+    texture[20] = gdevLoadTexture("Tex-Station-Normals.png", GL_REPEAT, true, true);
+    texture[21] = gdevLoadTexture("Tex-Station-Specular.png", GL_REPEAT, true, true);
+
+    // Station:
+    texture[22] = gdevLoadTexture("Tex-Train-Diffuse.png", GL_REPEAT, true, true);
+    texture[23] = gdevLoadTexture("Tex-Train-Normals.png", GL_REPEAT, true, true);
+    texture[24] = gdevLoadTexture("Tex-Train-Specular.png", GL_REPEAT, true, true);
+
+    // LampPost
+    texture[25] = gdevLoadTexture("Tex-LampPost-Diffuse.png", GL_REPEAT, true, true);
+    texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
         || ! texture[6] || ! texture[7] || ! texture[8]
-        || ! texture[9] || ! texture[10])
+        || ! texture[9] || ! texture[10]|| ! texture[11]
+        || ! texture[12]|| ! texture[13]|| ! texture[14]
+        || ! texture[15]|| ! texture[16]|| ! texture[17]
+        || ! texture[18]|| ! texture[19]|| ! texture[20]
+        || ! texture[21]|| ! texture[22]|| ! texture[23]
+        || ! texture[24]|| ! texture[25]|| ! texture[26])
         return false;
 
     /*---------------- INSTANCING FISH -----------------*/
@@ -1429,6 +1572,78 @@ void render()
     glBindVertexArray(vaos[10]);
     glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
+    // 6) Side Station
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[11]);
+    glBindVertexArray(vaos[11]);
+    glDrawArrays(GL_TRIANGLES, 0, SideStation.size() / 11);
+
+    // 7) Office
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1); 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[12]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[13]);
+    glBindVertexArray(vaos[12]);
+    glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
+    
+    // 8) Bus Station
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[14]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[15]);
+    glBindVertexArray(vaos[13]);
+    glDrawArrays(GL_TRIANGLES, 0, BusStation.size() / 11);
+
+    
+    // 9) Miscellaneous
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[16]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[17]);
+    glBindVertexArray(vaos[14]);
+    glDrawArrays(GL_TRIANGLES, 0, Miscellaneous.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+
+    // 10) Water
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[18]);
+    glBindVertexArray(vaos[15]);
+    glDrawArrays(GL_TRIANGLES, 0, Water.size() / 11);
+
+
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1);
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 1);
+    // 11) Station
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[19]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[20]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[21]);
+    glBindVertexArray(vaos[16]);
+    glDrawArrays(GL_TRIANGLES, 0, TrainStation.size() / 11);
+    // 12) Train Carts
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[22]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[23]);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, texture[24]);
+    glBindVertexArray(vaos[17]);
+    glDrawArrays(GL_TRIANGLES, 0, TrainCart.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[25]);
+    glBindVertexArray(vaos[18]);
+    glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[26]);
+    glBindVertexArray(vaos[19]);
+    glDrawArrays(GL_TRIANGLES, 0, LampBulb.size() / 11);
 
 
     /*---------------- INSTANCING FISH -----------------*/
