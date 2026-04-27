@@ -64,7 +64,7 @@ GLuint instancedVao;
 GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
-GLuint texture[27];
+GLuint texture[28];
 
 int vertex_data_num =  20;
 GLuint vaos[20], vbos[20];
@@ -316,6 +316,9 @@ glm::vec3 fogColor(0.04f, 0.05f, 0.08f);
 // glm::vec3 fogColor(0.1f, 0.1f, 0.1f);
 
 bool enableFog = false;
+
+// parallax map parameters
+float heightScale = 0.05f;
 
 
 /*------------------FISH--------------------*/
@@ -1030,6 +1033,7 @@ void renderCubemap() {
     glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
     glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
+    glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     // glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
     glUseProgram(shader);
 
@@ -1372,7 +1376,8 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
     glUniform1i(glGetUniformLocation(shader, "directionalShadowArray"), 3);
-    glUniform1i(glGetUniformLocation(shader, "spotShadowArray"), 4);    
+    glUniform1i(glGetUniformLocation(shader, "spotShadowArray"), 4);
+    glUniform1i(glGetUniformLocation(shader, "heightMap"), 8);
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
 
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
@@ -1385,7 +1390,9 @@ bool setup()
     // 2 - specular map
     // 3 - dir shadow maps
     // 4 - spot shadow maps
-    // 5 - point light shadow maps (todo)
+    // 5 - point light shadow maps (not implemented)
+    // 7 - cubemap envi map
+    // 8 - height map for parallax
     // 6 - transparent texture (for grass)
     // 12 - offset texture for pcf
 
@@ -1452,6 +1459,9 @@ bool setup()
     // LampPost
     texture[25] = gdevLoadTexture("Tex-LampPost-Diffuse.png", GL_REPEAT, true, true);
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
+
+    // Brick Height Map:
+    texture[27] = gdevLoadTexture("Tex-Parallax-Height.jpeg", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1537,6 +1547,8 @@ bool setup()
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
 
+
+    // debug cube stuff
     glGenVertexArrays(1, &debugCubeVao);
     glGenBuffers(1, &debugCubeVbo);
     glBindVertexArray(debugCubeVao);
@@ -1694,7 +1706,15 @@ void render()
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture[3]);
     glBindVertexArray(vaos[1]);
+
+    glUniform1i(glGetUniformLocation(shader, "useParallax"), 1);
+    glUniform1f(glGetUniformLocation(shader, "heightScale"), heightScale);
+
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, texture[27]); // height map for parallax
+
     glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "useParallax"), 0);
 
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     // 3) Lower Building: Just Use Diffuse, no normal nor specular

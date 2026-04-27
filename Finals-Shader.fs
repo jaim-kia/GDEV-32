@@ -96,6 +96,11 @@ uniform float fogStart;
 uniform float fogEnd;
 uniform vec3 fogColor;
 
+// parallax map stuff
+uniform bool useParallax;
+uniform sampler2D heightMap;
+uniform float heightScale;
+
 out vec4 fragmentColor;
 
 vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir, vec2 uv) {
@@ -230,15 +235,33 @@ float inShadowSpotlight(int index)
     return PCFRandomSampling(position, spotShadowArray, index);
 }
 
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
+{
+    float height = texture(heightMap, texCoords).r;
+    float depth = height * heightScale;
+
+    return texCoords - viewDirTangent.xy * depth;
+}
+
 void main() {
-    
+    vec3 viewDir = normalize(-shaderPosition);
+    vec3 viewDirTangent = normalize(transpose(shaderTBN) * viewDir);
+
     vec2 finalUV;
     if (isTile) {
         vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
         finalUV = (worldSpacePosition.xz * 0.2)
                 + (displacement.rg - 0.5)
                 + vec2(time * 0.01, -time * 0.01);
-    } else {
+    } 
+    else if (useParallax) {
+        finalUV = ParallaxMapping(shaderTexCoord, viewDirTangent);
+        
+        // if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
+        //     discard; // discard where UVs outside tex
+        // }
+    }
+    else {
         finalUV = shaderTexCoord;
     }
     
@@ -248,11 +271,12 @@ void main() {
         vec3 textureNormal = vec3(texture(normalMap, finalUV));
         textureNormal = normalize(textureNormal * 2.0f - 1.0f);  
         normalDir = normalize(shaderTBN * textureNormal);
-    } else {
+    } 
+    else {
         normalDir = normalize(shaderTBN[2]); 
     }
 
-    vec3 viewDir = normalize(-shaderPosition);
+ // view to tangent for parallax mapping
 
     vec3 result = vec3(0.0f);
 
