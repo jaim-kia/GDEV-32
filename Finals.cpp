@@ -15,6 +15,12 @@
  * Press - to decrease PCF sample quality (fewer samples = sharper shadows)
  * Press ] to increase PCF radius (larger sampling area = softer shadows)
  * Press [ to decrease PCF radius (smaller sampling area = sharper shadows)
+ * 
+ * Press G to toggle grass and leaves on/off
+ * Press B to toggle bloom on/off
+ * Press V to toggle fog on/off
+ * Press arrow up/down to increase/decrease fog end distance (how far the fog reaches)
+ * Press arrow right/left to increase/decrease fog start distance (where the fog starts)
  *****************************************************************************/
 
 #include <iostream>
@@ -296,11 +302,22 @@ GLuint quadVao, quadVbo;
 float bloomThreshold = 1.0f;  // pixels brighter than this get bloomed
 float bloomStrength = 1.0f;  // how much bloom adds on top
 float bloomExposure = 0.5f;  // tone mapping exposure
-int bloomPasses = 10;    // number of blur iterations — more = wider glow
+int bloomPasses = 10;  // number of blur iterations — more = wider glow
 
 bool enableBloom = true;
 
 float lastPrintTime = 0.0f; // for debugging camera position printouts
+
+// fog parameters
+float fogStart = 8.0f;
+float fogEnd = 64.0f;
+// glm::vec3 fogColor(0.67f, 0.68f, 0.69f);
+glm::vec3 fogColor(0.04f, 0.05f, 0.08f);
+// glm::vec3 fogColor(0.1f, 0.1f, 0.1f);
+
+bool enableFog = false;
+
+
 /*------------------FISH--------------------*/
 
 // fish parameters
@@ -1013,7 +1030,7 @@ void renderCubemap() {
     glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
     glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
-    glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
+    // glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
     glUseProgram(shader);
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
@@ -1169,7 +1186,7 @@ void renderCubemap() {
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_CULL_FACE); // restore
 }
 
@@ -1578,7 +1595,8 @@ void render()
     glViewport(0, 0, width, height);
 
     // clear the whole frame
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // using our shader program...
@@ -1617,9 +1635,14 @@ void render()
     
     uploadLightUniforms(viewTransform);
     
-
+    
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
 
+    // fog stuff
+    glUniform1i(glGetUniformLocation(shader, "enableFog"), enableFog);
+    glUniform1f(glGetUniformLocation(shader, "fogStart"), fogStart);
+    glUniform1f(glGetUniformLocation(shader, "fogEnd"), fogEnd);
+    glUniform3fv(glGetUniformLocation(shader, "fogColor"), 1, glm::value_ptr(fogColor));
 
     if (enableShadows) {
         // Upload light-space transform matrices
@@ -1778,7 +1801,7 @@ void render()
 
 
     /*---------------- INSTANCING FISH -----------------*/
-    // computeNextFishStates(static_cast<float>(glfwGetTime()));
+    computeNextFishStates(static_cast<float>(glfwGetTime()));
 
     // update fish matrices
     for (int i = 0; i < NUM_FISH; i++) {
@@ -1971,13 +1994,13 @@ void render()
     glEnable(GL_DEPTH_TEST); // restore for next frame
 
     // print main camera pos every 1 second for debugging
-    if (glfwGetTime() - lastPrintTime >= 1.0f) {
-        std::cout << "Camera Position: (" 
-                  << active_camera->position.x << ", " 
-                  << active_camera->position.y << ", " 
-                  << active_camera->position.z << ")" << std::endl;
-        lastPrintTime = glfwGetTime();
-    }
+    // if (glfwGetTime() - lastPrintTime >= 1.0f) {
+    //     std::cout << "Camera Position: (" 
+    //               << active_camera->position.x << ", " 
+    //               << active_camera->position.y << ", " 
+    //               << active_camera->position.z << ")" << std::endl;
+    //     lastPrintTime = glfwGetTime();
+    // }
 
 }
 
@@ -2028,6 +2051,20 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
         else {
             active_camera->fov = glm::max(active_camera->fov - 30.0f * deltaTime, 1.0f);
         }
+    }
+
+    if (enableFog) {
+        float fogRate = 15.0f * deltaTime;
+
+        if (glfwGetKey(pWindow, GLFW_KEY_UP) == GLFW_PRESS)
+            fogEnd = std::min(fogEnd + fogRate, 150.0f);
+        if (glfwGetKey(pWindow, GLFW_KEY_DOWN) == GLFW_PRESS)
+            fogEnd = std::max(fogEnd - fogRate, fogStart + 1.0f);
+
+        if (glfwGetKey(pWindow, GLFW_KEY_RIGHT) == GLFW_PRESS)
+            fogStart = std::min(fogStart + fogRate, fogEnd - 1.0f);
+        if (glfwGetKey(pWindow, GLFW_KEY_LEFT) == GLFW_PRESS)
+            fogStart = std::max(fogStart - fogRate, 3.0f);
     }
 }
 
@@ -2152,6 +2189,9 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         case GLFW_KEY_B:
             enableBloom = !enableBloom;
+            break;
+        case GLFW_KEY_V:
+            enableFog = !enableFog;
             break;
     }
 }

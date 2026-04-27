@@ -90,6 +90,12 @@ uniform mat3 inverseViewRotation;
 uniform bool isEmissive;
 uniform vec3 emissiveColor;
 
+// fog stuff
+uniform bool enableFog;
+uniform float fogStart;
+uniform float fogEnd;
+uniform vec3 fogColor;
+
 out vec4 fragmentColor;
 
 vec3 CalculateDirLight(DirLight light, vec3 normal, vec3 viewDir, vec2 uv) {
@@ -318,5 +324,11 @@ void main() {
     } 
     else {
         fragmentColor = vec4(result, 1.0f);
+    }
+
+    if (enableFog) {
+        float depth = length(shaderPosition);
+        float fogFactor = clamp((fogEnd - depth) / (fogEnd - fogStart), 0.0, 1.0);
+        fragmentColor = vec4(mix(fogColor, fragmentColor.rgb, fogFactor), fragmentColor.a);
     }
 }
