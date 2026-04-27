@@ -158,7 +158,7 @@ GLuint offsetTexture; // noise texture for PCF sampling
 bool enableShadows = true;
 
 // grass toggle
-bool showGrass = true;
+bool showGrassLeaves = true;
 
 // environment map stuff
 #define CUBEMAP_SIZE 512
@@ -706,7 +706,7 @@ void drawSceneGeometry() {
     glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
 
     glBindVertexArray(vaos[19]);
-    glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
+    glDrawArrays(GL_TRIANGLES, 0, LampBulb.size() / 11);
 }
 
 void renderDirectionalShadows(int index, Light& light) {
@@ -1402,7 +1402,7 @@ bool setup()
     texture[9] = gdevLoadTexture("Tex-TreeBark-Diffuse.png", GL_REPEAT, true, true);
 
     // Tree Leaves:
-    texture[10] = gdevLoadTexture("Tex-TreeLeavesUnblended-Diffuse.png", GL_REPEAT, true, true);
+    texture[10] = gdevLoadTexture("Tex-TreeLeaves-Diffuse.png", GL_REPEAT, true, true);
 
     // Side Station:
     texture[11] = gdevLoadTexture("Tex-SideStation-Diffuse.png", GL_REPEAT, true, true);
@@ -1882,7 +1882,7 @@ void render()
     }
 
     // GRASS
-    if (showGrass) {
+    if (showGrassLeaves) {
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1902,10 +1902,10 @@ void render()
         glBindVertexArray(vaos[2]);
         glDrawArrays(GL_TRIANGLES, 0, GrassMesh.size() / 11);
 
-        // glActiveTexture(GL_TEXTURE0);
-        // glBindTexture(GL_TEXTURE_2D, texture[10]);
-        // glBindVertexArray(vaos[9]);
-        // glDrawArrays(GL_TRIANGLES, 0, TreeLeaves.size() / 11);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture[10]);
+        glBindVertexArray(vaos[9]);
+        glDrawArrays(GL_TRIANGLES, 0, TreeLeaves.size() / 11);
 
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
@@ -2145,7 +2145,7 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             enableShadows = !enableShadows;
             break;
         case GLFW_KEY_G:
-            showGrass = !showGrass;
+            showGrassLeaves = !showGrassLeaves;
             break;
         case GLFW_KEY_C:
             showDebugCube = !showDebugCube;
