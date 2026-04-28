@@ -1194,9 +1194,8 @@ bool setupBloom() {
     // Depth renderbuffer
     glGenRenderbuffers(1, &hdrDepthRbo);
     glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                              GL_RENDERBUFFER, hdrDepthRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, hdrDepthRbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "HDR framebuffer incomplete.\n";
@@ -1614,10 +1613,10 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
 
     // 5) Mirror Plane
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
-    glBindVertexArray(vaos[10]);
-    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
+    // glBindVertexArray(vaos[10]);
+    // glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
     // 6) Side Station
     glActiveTexture(GL_TEXTURE0);
@@ -1627,12 +1626,12 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
     // 7) Office
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1); 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[12]);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, texture[13]);
-    glBindVertexArray(vaos[12]);
-    glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[12]);
+    // glActiveTexture(GL_TEXTURE1);
+    // glBindTexture(GL_TEXTURE_2D, texture[13]);
+    // glBindVertexArray(vaos[12]);
+    // glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
     
     // 8) Bus Station
     glActiveTexture(GL_TEXTURE0);
@@ -1832,7 +1831,9 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
         glEnable(GL_CULL_FACE);
         glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
     }
+}
 
+void drawPostProcess() {
     // pass 2: post process bloom
     glDisable(GL_DEPTH_TEST); // depth not needed for post process
     if (enableBloom) {
@@ -2007,56 +2008,55 @@ void render()
     glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
 
     glm::vec3 n = glm::normalize(glm::vec3(-0.9848f, 0.1736f, 0.0f));
-    float d     = glm::dot(n, glm::vec3(19.272734f, 2.855113f, 5.277397f));
+    glm::vec3 mirrorPoint = glm::vec3(19.272734f, 2.855113f, 5.277397f);
+    float d = glm::dot(n, mirrorPoint); // used for reflection matrix
     glm::mat4 mirrorMatrix = buildReflectionMatrix(n, d);
 
-    // -------------------------------------------------------
-    // PASS 1: stamp mirror quad into stencil
-    // -------------------------------------------------------
+    glm::vec3 clipNormal = -n;
+    float clipD = glm::dot(clipNormal, mirrorPoint);
+    glm::vec4 clipPlane = glm::vec4(clipNormal.x, clipNormal.y, clipNormal.z, -clipD);
+
+    // --- PASS 1: Draw mirror shape into stencil buffer ---
     glEnable(GL_STENCIL_TEST);
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    glDepthMask(GL_FALSE);
+    glStencilMask(0xFF);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); // don't write color
+    glDepthMask(GL_FALSE);                               // don't write depth
 
+    // draw ONLY the mirror quad
     glBindVertexArray(vaos[10]);
     glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glDepthMask(GL_TRUE);
 
-    // -------------------------------------------------------
-    // PASS 2: reflected scene inside stencil only
-    // -------------------------------------------------------
+    // --- PASS 2: Draw reflected scene, clipped to stencil ---
     glStencilFunc(GL_EQUAL, 1, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilMask(0x00); // don't modify stencil anymore
 
-    glFrontFace(GL_CW);
-    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-                    1, GL_FALSE, glm::value_ptr(mirrorMatrix));
+    glDisable(GL_CULL_FACE);
+
+    // glm::vec4 clipPlane = glm::vec4(-n.x, -n.y, -n.z, d); // ax+by+cz+d form
+    glEnable(GL_CLIP_DISTANCE0);
+    glUniform4fv(glGetUniformLocation(shader, "clipPlane"), 1, glm::value_ptr(clipPlane));
+
+
+    glFrontFace(GL_CW); // flip winding for reflected geometry
     drawScene(projectionTransform, viewTransform, mirrorMatrix);
     glFrontFace(GL_CCW);
 
-    // -------------------------------------------------------
-    // PASS 3: real scene
-    // -------------------------------------------------------
-    glDisable(GL_STENCIL_TEST);
-    glClear(GL_DEPTH_BUFFER_BIT);
-    // reset to identity ONCE
-    glm::mat4 identity = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-                    1, GL_FALSE, glm::value_ptr(identity));
-    drawScene(projectionTransform, viewTransform);
+    glDisable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CULL_FACE);
 
-    // -------------------------------------------------------
-    // PASS 4: mirror quad as glass
-    // -------------------------------------------------------
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUniform1f(glGetUniformLocation(shader, "alpha"), 0.15f); // if your shader supports it
-    glBindVertexArray(vaos[10]);
-    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
-    glDisable(GL_BLEND);
+    // --- PASS 3: Clear stencil, draw real world normally ---
+    glStencilMask(0xFF);
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glDisable(GL_STENCIL_TEST);
+
+    drawScene(projectionTransform, viewTransform); // identity mirrorMat, normal world
+    drawPostProcess();
 
     // print main camera pos every 1 second for debugging
     if (glfwGetTime() - lastPrintTime >= 1.0f) {
