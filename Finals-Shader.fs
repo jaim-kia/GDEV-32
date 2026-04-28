@@ -83,12 +83,24 @@ uniform float time;
 
 uniform bool isReflective;
 uniform float reflectivity;
-uniform samplerCube cubemap;
+uniform samplerCube cubemap[2];
+uniform int cubemapIndex;
 uniform mat3 inverseViewRotation;
 
 // bloom stuff
 uniform bool isEmissive;
 uniform vec3 emissiveColor;
+
+// fog stuff
+uniform bool enableFog;
+uniform float fogStart;
+uniform float fogEnd;
+uniform vec3 fogColor;
+
+// parallax map stuff
+uniform bool useParallax;
+uniform sampler2D heightMap;
+uniform float heightScale;
 
 out vec4 fragmentColor;
 
@@ -224,15 +236,33 @@ float inShadowSpotlight(int index)
     return PCFRandomSampling(position, spotShadowArray, index);
 }
 
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
+{
+    float height = texture(heightMap, texCoords).r;
+    float depth = height * heightScale;
+
+    return texCoords - viewDirTangent.xy * depth;
+}
+
 void main() {
-    
+    vec3 viewDir = normalize(-shaderPosition);
+    vec3 viewDirTangent = normalize(transpose(shaderTBN) * viewDir);
+
     vec2 finalUV;
     if (isTile) {
         vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
         finalUV = (worldSpacePosition.xz * 0.2)
                 + (displacement.rg - 0.5)
                 + vec2(time * 0.01, -time * 0.01);
-    } else {
+    } 
+    else if (useParallax) {
+        finalUV = ParallaxMapping(shaderTexCoord, viewDirTangent);
+        
+        // if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
+        //     discard; // discard where UVs outside tex
+        // }
+    }
+    else {
         finalUV = shaderTexCoord;
     }
     
@@ -242,11 +272,12 @@ void main() {
         vec3 textureNormal = vec3(texture(normalMap, finalUV));
         textureNormal = normalize(textureNormal * 2.0f - 1.0f);  
         normalDir = normalize(shaderTBN * textureNormal);
-    } else {
+    } 
+    else {
         normalDir = normalize(shaderTBN[2]); 
     }
 
-    vec3 viewDir = normalize(-shaderPosition);
+ // view to tangent for parallax mapping
 
     vec3 result = vec3(0.0f);
 
@@ -309,14 +340,20 @@ void main() {
         // Sample cubemap
         vec3 fragWorldPos = worldSpacePosition;
         vec3 viewDirWorld = normalize(fragWorldPos - cameraWorldPos);
-        vec3 normalWorld  = normalize(inverseViewRotation * normalDir);
-        vec3 reflectDir   = reflect(viewDirWorld, normalWorld);
-        vec4 envColor     = texture(cubemap, reflectDir);
+        vec3 normalWorld = normalize(inverseViewRotation * normalDir);
+        vec3 reflectDir = reflect(viewDirWorld, normalWorld);
+        vec4 envColor = texture(cubemap[cubemapIndex], reflectDir);
 
         vec3 blended = mix(glassResult, envColor.rgb, reflectivity);
         fragmentColor = vec4(blended, 1.0f);
     } 
     else {
         fragmentColor = vec4(result, 1.0f);
+    }
+
+    if (enableFog) {
+        float depth = length(shaderPosition);
+        float fogFactor = clamp((fogEnd - depth) / (fogEnd - fogStart), 0.0, 1.0);
+        fragmentColor = vec4(mix(fogColor, fragmentColor.rgb, fogFactor), fragmentColor.a);
     }
 }

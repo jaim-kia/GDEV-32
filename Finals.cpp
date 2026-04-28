@@ -15,6 +15,12 @@
  * Press - to decrease PCF sample quality (fewer samples = sharper shadows)
  * Press ] to increase PCF radius (larger sampling area = softer shadows)
  * Press [ to decrease PCF radius (smaller sampling area = sharper shadows)
+ * 
+ * Press G to toggle grass and leaves on/off
+ * Press B to toggle bloom on/off
+ * Press V to toggle fog on/off
+ * Press arrow up/down to increase/decrease fog end distance (how far the fog reaches)
+ * Press arrow right/left to increase/decrease fog start distance (where the fog starts)
  *****************************************************************************/
 
 #include <iostream>
@@ -58,7 +64,7 @@ GLuint instancedVao;
 GLuint instancedVbo;
 GLuint instancedVboMatrix;
 GLuint shader;
-GLuint texture[27];
+GLuint texture[28];
 
 int vertex_data_num =  20;
 GLuint vaos[20], vbos[20];
@@ -162,10 +168,14 @@ bool showGrassLeaves = true;
 
 // environment map stuff
 #define CUBEMAP_SIZE 512
+GLuint cubemapTexture[2];
+GLuint cubemapFbo[2];
+GLuint cubemapRbo[2];
 
-GLuint cubemapTexture;
-GLuint cubemapFbo;
-GLuint cubemapRbo;
+glm::vec3 cubemapCapturePos[2] = {
+    glm::vec3(-12.4638, 2.2572, -5.79182), // left building
+    glm::vec3(15.0695f, 6.69858f, -1.34712f)  // right building
+};
 
 bool cubemapNeedsRender = true;
 
@@ -217,6 +227,7 @@ float debugCubeVertices[] = {
 GLuint debugCubeVao, debugCubeVbo;
 bool showDebugCube = false;
 
+// https://danielsieger.com/blog/2021/03/27/generating-spheres.html
 void generateDebugSphere(int stacks, int slices, float radius, std::vector<float>& data)
 {
     data.clear();
@@ -242,7 +253,6 @@ void generateDebugSphere(int stacks, int slices, float radius, std::vector<float
             glm::vec2 uv3 = glm::vec2(theta2 / (2.0f*glm::pi<float>()), phi2 / glm::pi<float>());
             glm::vec2 uv4 = glm::vec2(theta2 / (2.0f*glm::pi<float>()), phi1 / glm::pi<float>());
 
-            // tangent (approx, good enough for debug)
             glm::vec3 tangent = glm::normalize(glm::vec3(-sin(theta1), 0.0f, cos(theta1)));
 
             auto pushVertex = [&](glm::vec3 pos, glm::vec2 uv)
@@ -284,23 +294,38 @@ GLuint bloomBlurShader;
 GLuint bloomCompositeShader;
 
 GLuint hdrFbo;
-GLuint hdrColorTexture;  // float texture — the scene
+GLuint hdrColorTexture;
 GLuint hdrDepthRbo;
 
 GLuint pingFbo, pongFbo;
 GLuint pingTexture, pongTexture;
 
-// Fullscreen quad VAO
+
 GLuint quadVao, quadVbo;
 
 float bloomThreshold = 1.0f;  // pixels brighter than this get bloomed
 float bloomStrength = 1.0f;  // how much bloom adds on top
 float bloomExposure = 0.5f;  // tone mapping exposure
-int bloomPasses = 10;    // number of blur iterations — more = wider glow
+int bloomPasses = 10;  // number of blur iterations, more = wider glow
 
 bool enableBloom = true;
 
-float lastPrintTime = 0.0f; // for debugging camera position printouts
+// for debugging camera position printouts
+float lastPrintTime = 0.0f; 
+
+// fog parameters
+float fogStart = 8.0f;
+float fogEnd = 64.0f;
+// glm::vec3 fogColor(0.67f, 0.68f, 0.69f);
+glm::vec3 fogColor(0.04f, 0.05f, 0.08f);
+// glm::vec3 fogColor(0.1f, 0.1f, 0.1f);
+
+bool enableFog = false;
+
+// parallax map parameters
+float heightScale = 0.05f;
+
+
 /*------------------FISH--------------------*/
 
 // fish parameters
@@ -583,8 +608,7 @@ bool setupShadowMaps()
     directionalLightTransforms.resize(numDir);
     spotLightTransforms.resize(numSpot);
 
-    // --- Directional shadow array ---
-    // One FBO, one texture array with numDir layers
+    // directional shadow array 
     glGenFramebuffers(1, &directionalShadowFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, directionalShadowFbo);
 
@@ -600,7 +624,6 @@ bool setupShadowMaps()
     float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
 
-    // Attach layer 0 initially just to validate the FBO
     glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, directionalShadowArray, 0, 0);
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
@@ -611,7 +634,7 @@ bool setupShadowMaps()
         return false;
     }
 
-    // --- Spot shadow array ---
+    // spot shadow array 
     glGenFramebuffers(1, &spotShadowFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFbo);
 
@@ -636,7 +659,6 @@ bool setupShadowMaps()
         return false;
     }
 
-    // Load shadow shader
     shadowMapShader = gdevLoadShader("Finals-Shader-Shadow.vs", "Finals-Shader-Shadow.fs");
     if (!shadowMapShader)
         return false;
@@ -868,42 +890,41 @@ void setupPCF() {
 }
 
 bool setupCubemap() {
-    // Create the cubemap texture
-    glGenTextures(1, &cubemapTexture);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    for (int c = 0; c < 2; c++) {
+        glGenTextures(1, &cubemapTexture[c]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[c]);
 
-    for (int i = 0; i < 6; i++) {
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
-                     CUBEMAP_SIZE, CUBEMAP_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        for (int i = 0; i < 6; i++) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+                        CUBEMAP_SIZE, CUBEMAP_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        }
+
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+        glGenFramebuffers(1, &cubemapFbo[c]);
+        glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo[c]);
+
+        glGenRenderbuffers(1, &cubemapRbo[c]);
+        glBindRenderbuffer(GL_RENDERBUFFER, cubemapRbo[c]);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, CUBEMAP_SIZE, CUBEMAP_SIZE);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cubemapRbo[c]);
+
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cout << "Cubemap framebuffer " << c << " incomplete.\n";
+            return false;
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
-
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-    // Create FBO
-    glGenFramebuffers(1, &cubemapFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
-
-    // Depth renderbuffer — cubemap pass needs depth testing
-    // (unlike shadow maps we need a color attachment here, so RBO handles depth)
-    glGenRenderbuffers(1, &cubemapRbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, cubemapRbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, CUBEMAP_SIZE, CUBEMAP_SIZE);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cubemapRbo);
-
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cout << "Cubemap framebuffer incomplete.\n";
-        return false;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return true;
+    
 }
 
 void uploadLightUniforms(const glm::mat4& viewMatrix) {
@@ -991,12 +1012,12 @@ void uploadLightUniforms(const glm::mat4& viewMatrix) {
 }
 
 
-void renderCubemap() {
+void renderCubemap(int cubemapIndex) {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE); // needed so floor renders from below
     // glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f); // TODO: add multiple capture positions
 
-    glm::vec3 capturePos = glm::vec3(-12.4638, 2.2572, -5.79182); // TODO: add multiple capture positions
+    glm::vec3 capturePos = cubemapCapturePos[cubemapIndex];
 
     struct FaceSetup { glm::vec3 direction, up; };
     FaceSetup faces[6] = {
@@ -1010,28 +1031,28 @@ void renderCubemap() {
 
     glm::mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 500.0f);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, cubemapFbo[cubemapIndex]);
     glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
-    glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
+    glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
+    // glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
     glUseProgram(shader);
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
                        1, GL_FALSE, glm::value_ptr(captureProjection));
 
-    glUniform1i(glGetUniformLocation(shader, "isInstanced"),    0);
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
     glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
-    glUniform1i(glGetUniformLocation(shader, "isReflective"),   0);
-    glUniform1i(glGetUniformLocation(shader, "hasNormal"),      0);
-    glUniform1i(glGetUniformLocation(shader, "hasSpecular"),    0);
-    glUniform1i(glGetUniformLocation(shader, "isTile"),         0);
-    glUniform1i(glGetUniformLocation(shader, "enableShadows"),  enableShadows); // use real shadows
+    glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows); // use real shadows
     glUniform1f(glGetUniformLocation(shader, "alphaThreshold"), 0.1f);
-    glUniform1f(glGetUniformLocation(shader, "time"),           0.0f);
+    glUniform1f(glGetUniformLocation(shader, "time"),  0.0f);
     glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
                  1, glm::value_ptr(capturePos));
 
-    // Upload shadow maps — same as main pass, they're already computed
     if (enableShadows) {
         for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
             std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
@@ -1055,7 +1076,7 @@ void renderCubemap() {
     for (int i = 0; i < 6; i++) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-                               cubemapTexture, 0);
+                               cubemapTexture[cubemapIndex], 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 faceView = glm::lookAt(capturePos,
@@ -1069,7 +1090,6 @@ void renderCubemap() {
         glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                            1, GL_FALSE, glm::value_ptr(identityModel));
 
-        // Upload real lights transformed into this face's camera space
         uploadLightUniforms(faceView);
 
         // Floor
@@ -1169,18 +1189,17 @@ void renderCubemap() {
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_CULL_FACE); // restore
 }
 
 bool setupBloom() {
     int w = WINDOW_WIDTH, h = WINDOW_HEIGHT;
 
-    // --- HDR framebuffer ---
     glGenFramebuffers(1, &hdrFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFbo);
 
-    // Float texture for HDR color
+    // float texture for HDR color
     glGenTextures(1, &hdrColorTexture);
     glBindTexture(GL_TEXTURE_2D, hdrColorTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, NULL);
@@ -1191,7 +1210,7 @@ bool setupBloom() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                            GL_TEXTURE_2D, hdrColorTexture, 0);
 
-    // Depth renderbuffer
+    // depth renderbuffer
     glGenRenderbuffers(1, &hdrDepthRbo);
     glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
@@ -1202,7 +1221,7 @@ bool setupBloom() {
         return false;
     }
 
-    // --- Ping-pong framebuffers for blur ---
+    // ping-pong framebuffers for blur
     GLuint pingpongFbos[2] = {pingFbo, pongFbo};
     GLuint pingpongTextures[2] = {pingTexture, pongTexture};
     glGenFramebuffers(2, pingpongFbos);
@@ -1227,7 +1246,6 @@ bool setupBloom() {
         }
     }
 
-    // --- Fullscreen quad ---
     float quadVertices[] = {
         // x      y      u     v
         -1.0f,  1.0f,  0.0f, 1.0f,
@@ -1249,7 +1267,6 @@ bool setupBloom() {
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 
-    // --- Load bloom shaders ---
     bloomThresholdShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Threshold.fs");
     bloomBlurShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Blur.fs");
     bloomCompositeShader = gdevLoadShader("Finals-Bloom-Shader.vs", "Finals-Bloom-Composite.fs");
@@ -1257,7 +1274,6 @@ bool setupBloom() {
     if (!bloomThresholdShader || !bloomBlurShader || !bloomCompositeShader)
         return false;
 
-    // Set sampler uniforms once
     glUseProgram(bloomThresholdShader);
     glUniform1i(glGetUniformLocation(bloomThresholdShader, "hdrScene"), 0);
 
@@ -1295,7 +1311,6 @@ bool setup()
     readModelData(TrainCart, "Finals-Data-TrainCart.txt");
     readModelData(LampPost, "Finals-Data-LampPost.txt");
     readModelData(LampBulb, "Finals-Data-LampBulb.txt");
-    // readModelData(InstanceMesh, "fish_data.txt");
     generateDebugSphere(4, 4, 0.05f, InstanceMesh);
 
     vertex_data[0] = FloorMesh;
@@ -1354,7 +1369,8 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "normalMap"),  1);
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
     glUniform1i(glGetUniformLocation(shader, "directionalShadowArray"), 3);
-    glUniform1i(glGetUniformLocation(shader, "spotShadowArray"), 4);    
+    glUniform1i(glGetUniformLocation(shader, "spotShadowArray"), 4);
+    glUniform1i(glGetUniformLocation(shader, "heightMap"), 9);
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
 
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
@@ -1367,7 +1383,10 @@ bool setup()
     // 2 - specular map
     // 3 - dir shadow maps
     // 4 - spot shadow maps
-    // 5 - point light shadow maps (todo)
+    // 5 - point light shadow maps (not implemented)
+    // 7 - cubemap envi map 1
+    // 8 - cubemap envi map 2
+    // 9 - height map for parallax
     // 6 - transparent texture (for grass)
     // 12 - offset texture for pcf
 
@@ -1434,6 +1453,9 @@ bool setup()
     // LampPost
     texture[25] = gdevLoadTexture("Tex-LampPost-Diffuse.png", GL_REPEAT, true, true);
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
+
+    // Brick Height Map:
+    texture[27] = gdevLoadTexture("Tex-Parallax-Height.jpeg", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1506,19 +1528,21 @@ bool setup()
     
     if (!setupBloom()) return false;
 
-
-    // Bind cubemap to unit 7
+    // bind cubemaps to unit 7 and 8
     glUseProgram(shader);
-    glUniform1i(glGetUniformLocation(shader, "cubemap"), 7);
+    glUniform1i(glGetUniformLocation(shader, "cubemap[0]"), 7);
+    glUniform1i(glGetUniformLocation(shader, "cubemap[1]"), 8);
     glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
     glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.5f); 
 
     // renderCubemap();
 
-    // Keep cubemap bound to unit 7 persistently
     glActiveTexture(GL_TEXTURE7);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
 
+    // debug cube stuff
     glGenVertexArrays(1, &debugCubeVao);
     glGenBuffers(1, &debugCubeVbo);
     glBindVertexArray(debugCubeVao);
@@ -1541,6 +1565,22 @@ bool setup()
 glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
 {
     glm::mat4 M = glm::mat4(1.0f);
+    // render cubemap
+    // if (cubemapNeedsRender) {
+    //     int dirIdx = 0, spotIdx = 0;
+    //     for (auto* light : lights) {
+    //         if (light->type == Light::DIRECTIONAL) renderDirectionalShadows(dirIdx++, *light);
+    //         else if (light->type == Light::SPOTLIGHT) renderSpotShadows(spotIdx++, *light);
+    //     }
+    //     renderCubemap(0);
+    //     renderCubemap(1);
+
+    //     glActiveTexture(GL_TEXTURE7);
+    //     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+    //     glActiveTexture(GL_TEXTURE8);
+    //     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
+    //     cubemapNeedsRender = false;
+    // }   
 
     // I - 2(n cross n) for rotation
     M[0][0] = 1 - 2*n.x*n.x;
@@ -1561,6 +1601,14 @@ glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
     M[3][1] = 2*d*n.y;
     M[3][2] = 2*d*n.z;
 
+
+
+
+    // clear the whole frame
+    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     return M;
 }
 
@@ -1569,7 +1617,56 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
 
-    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(mirrorMat));
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"), 1, GL_FALSE, glm::value_ptr(mirrorMat));
+
+    // // ... set up the model matrix... (just identity for this demo)
+    // glm::mat4 modelTransform = glm::mat4(1.0f);
+    // glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+    //                    1, GL_FALSE, glm::value_ptr(modelTransform));
+
+   
+    
+    // uploadLightUniforms(viewTransform);
+    
+    
+    // glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
+
+    // // fog stuff
+    // glUniform1i(glGetUniformLocation(shader, "enableFog"), enableFog);
+    // glUniform1f(glGetUniformLocation(shader, "fogStart"), fogStart);
+    // glUniform1f(glGetUniformLocation(shader, "fogEnd"), fogEnd);
+    // glUniform3fv(glGetUniformLocation(shader, "fogColor"), 1, glm::value_ptr(fogColor));
+
+    // if (enableShadows) {
+    //     for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
+    //         std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
+    //         glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+    //                         1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
+    //     }
+    //     for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+    //         std::string name = "spotLightTransforms[" + std::to_string(i) + "]";
+    //         glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+    //                         1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+    //     }
+
+    //     glActiveTexture(GL_TEXTURE3);
+    //     glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
+
+    //     glActiveTexture(GL_TEXTURE4);
+    //     glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
+
+    //     glActiveTexture(GL_TEXTURE12);
+    //     glBindTexture(GL_TEXTURE_3D, offsetTexture);
+    //     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    // }
+
+    // // Setting Up Default Uniforms
+    // glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
+    // glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    
 
     // Renders:
     // 1) Floor Mesh: hasNormal, No for the rest
@@ -1588,7 +1685,15 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, texture[3]);
     glBindVertexArray(vaos[1]);
+
+    glUniform1i(glGetUniformLocation(shader, "useParallax"), 1);
+    glUniform1f(glGetUniformLocation(shader, "heightScale"), heightScale);
+
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, texture[27]); // height map for parallax
+
     glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
+    glUniform1i(glGetUniformLocation(shader, "useParallax"), 0);
 
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     // 3) Lower Building: Just Use Diffuse, no normal nor specular
@@ -1734,6 +1839,42 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
     // --- Windows (reflective) ---
     if (mirrorMat == glm::mat4(1.0f)) {
+
+
+    // glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
+    // glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+
+    // // convert reflection vectors from camera space to world space
+    // glm::mat3 invViewRot = glm::transpose(glm::mat3(viewTransform));
+    // glUniformMatrix3fv(glGetUniformLocation(shader, "inverseViewRotation"),
+    //                 1, GL_FALSE, glm::value_ptr(invViewRot));
+
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse
+
+    // // lower windows
+    // glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
+    // // glActiveTexture(GL_TEXTURE7);
+    // // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+    // glBindVertexArray(vaos[4]);
+    // glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+
+
+    // // higher windows
+    // glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 1);
+    // // glActiveTexture(GL_TEXTURE8);
+    // // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
+    // glBindVertexArray(vaos[6]);
+    // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+
+    // // reset
+    // glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
+    // glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+
+    // // debug cube
+    // if (showDebugCube) {
         glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
         glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
         glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
@@ -1749,7 +1890,7 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
         glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse
 
         glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
 
         // lower windows
         glBindVertexArray(vaos[4]);
@@ -1787,8 +1928,8 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, texture[6]);
 
-            glActiveTexture(GL_TEXTURE7);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+            // glActiveTexture(GL_TEXTURE7);
+            // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
 
             glBindVertexArray(debugCubeVao);
             glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -1903,7 +2044,8 @@ void render()
             if (light->type == Light::DIRECTIONAL) renderDirectionalShadows(dirIdx++, *light);
             else if (light->type == Light::SPOTLIGHT) renderSpotShadows(spotIdx++, *light);
         }
-        renderCubemap();
+        renderCubemap(0);
+        renderCubemap(1);
         cubemapNeedsRender = false;
     }   
 
@@ -2077,13 +2219,13 @@ void render()
     drawPostProcess();
 
     // print main camera pos every 1 second for debugging
-    if (glfwGetTime() - lastPrintTime >= 1.0f) {
-        std::cout << "Camera Position: (" 
-                  << active_camera->position.x << ", " 
-                  << active_camera->position.y << ", " 
-                  << active_camera->position.z << ")" << std::endl;
-        lastPrintTime = glfwGetTime();
-    }
+    // if (glfwGetTime() - lastPrintTime >= 1.0f) {
+    //     std::cout << "Camera Position: (" 
+    //               << active_camera->position.x << ", " 
+    //               << active_camera->position.y << ", " 
+    //               << active_camera->position.z << ")" << std::endl;
+    //     lastPrintTime = glfwGetTime();
+    // }
 
 }
 
@@ -2134,6 +2276,20 @@ void processInput(GLFWwindow *pWindow, float deltaTime) {
         else {
             active_camera->fov = glm::max(active_camera->fov - 30.0f * deltaTime, 1.0f);
         }
+    }
+
+    if (enableFog) {
+        float fogRate = 15.0f * deltaTime;
+
+        if (glfwGetKey(pWindow, GLFW_KEY_UP) == GLFW_PRESS)
+            fogEnd = std::min(fogEnd + fogRate, 150.0f);
+        if (glfwGetKey(pWindow, GLFW_KEY_DOWN) == GLFW_PRESS)
+            fogEnd = std::max(fogEnd - fogRate, fogStart + 1.0f);
+
+        if (glfwGetKey(pWindow, GLFW_KEY_RIGHT) == GLFW_PRESS)
+            fogStart = std::min(fogStart + fogRate, fogEnd - 1.0f);
+        if (glfwGetKey(pWindow, GLFW_KEY_LEFT) == GLFW_PRESS)
+            fogStart = std::max(fogStart - fogRate, 3.0f);
     }
 }
 
@@ -2258,6 +2414,9 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         case GLFW_KEY_B:
             enableBloom = !enableBloom;
+            break;
+        case GLFW_KEY_V:
+            enableFog = !enableFog;
             break;
     }
 }
