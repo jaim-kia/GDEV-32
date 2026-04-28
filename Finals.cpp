@@ -1419,8 +1419,10 @@ bool setup()
     texture[1] = gdevLoadTexture("Tex-FloorMesh-Normals.png", GL_REPEAT, true, true);
 
     // Brick Elevation:
-    texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
-    texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
+    // texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
+    // texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
+    texture[2] = gdevLoadTexture("bricks2.jpg", GL_REPEAT, true, true);
+    texture[3] = gdevLoadTexture("bricks2_normal.jpg", GL_REPEAT, true, true);
 
     // Transparent Grass:
     texture[4] = gdevLoadTexture("Tex-Grass-Diffuse.png", GL_CLAMP_TO_EDGE, true, true);
@@ -1474,7 +1476,8 @@ bool setup()
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
 
     // Brick Height Map:
-    texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
+    // texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
+    texture[27] = gdevLoadTexture("bricks2_disp.jpg", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]

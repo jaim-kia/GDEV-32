@@ -234,13 +234,48 @@ float inShadowSpotlight(int index)
     return PCFRandomSampling(position, spotShadowArray, index);
 }
 
+// vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
+// {
+//     float height = texture(heightMap, texCoords).r;
+//     vec2 p = viewDirTangent.xy / viewDirTangent.z * (height * heightScale);
+//     // float depth = height * heightScale;
+
+//     // return texCoords - viewDirTangent.xy * depth;
+//     return texCoords - p;
+// }
+
 vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
 {
-    float height = texture(heightMap, texCoords).r;
-    float depth = height * heightScale;
+    const float numLayers = 10.0;
+    float layerDepth = 1.0 / numLayers;
+    float currentLayerDepth = 0.0;
 
-    return texCoords - viewDirTangent.xy * depth;
+    vec2 p = viewDirTangent.xy * heightScale;
+    vec2 deltaTexCoords = p / numLayers;
+
+    vec2  currentTexCoords = texCoords;
+    float currentDepthMapValue = texture(heightMap, currentTexCoords).r;
+    
+    while(currentLayerDepth < currentDepthMapValue)
+    {
+        // shift texture coordinates along direction of P
+        currentTexCoords -= deltaTexCoords;
+        // get depthmap value at current texture coordinates
+        currentDepthMapValue = texture(heightMap, currentTexCoords).r;  
+        // get depth of next layer
+        currentLayerDepth += layerDepth;  
+    }
+
+    return currentTexCoords;
+
+    // float height = texture(heightMap, texCoords).r;
+    // vec2 p = viewDirTangent.xy / viewDirTangent.z * (height * heightScale);
+    // // float depth = height * heightScale;
+
+    // // return texCoords - viewDirTangent.xy * depth;
+    // return texCoords - p;
 }
+
 
 void main() {
     vec3 viewDir = normalize(-shaderPosition);
@@ -252,11 +287,11 @@ void main() {
         finalUV = (worldSpacePosition.xz * 0.2) + (displacement.rg - 0.5) + vec2(time * 0.01, -time * 0.01);
     } 
     else if (useParallax) {
-        finalUV = ParallaxMapping(shaderTexCoord, viewDirTangent);
+        finalUV = ParallaxMapping(shaderTexCoord * 20.0, viewDirTangent);
         
-        if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
-            discard; // discard where UVs outside tex
-        }
+        // if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
+        //     discard; // discard where UVs outside tex
+        // }
     }
     else {
         finalUV = shaderTexCoord;
