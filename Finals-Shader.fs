@@ -154,9 +154,7 @@ vec3 CalculateSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos
 vec3 CalculatePointLight(PointLight light, vec3 normal, vec3 viewDir, vec3 fragPos, vec2 uv) {
     vec3 lightDir  = normalize(light.position - fragPos);
     float distance = length(light.position - fragPos);
-    float attenuation = 1.0f / (light.constant 
-                               + light.linear    * distance 
-                               + light.quadratic * (distance * distance));
+    float attenuation = 1.0f / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
 
     float diff = max(dot(normal, lightDir), 0.0f);
     vec3 diffuse = light.diffuse * diff * vec3(texture(diffuseMap, uv));
@@ -251,9 +249,7 @@ void main() {
     vec2 finalUV;
     if (isTile) {
         vec4 displacement = texture(shaderTextureSmoke, shaderTexCoord + vec2(time * 0.005, -time * 0.005));
-        finalUV = (worldSpacePosition.xz * 0.2)
-                + (displacement.rg - 0.5)
-                + vec2(time * 0.01, -time * 0.01);
+        finalUV = (worldSpacePosition.xz * 0.2) + (displacement.rg - 0.5) + vec2(time * 0.01, -time * 0.01);
     } 
     else if (useParallax) {
         finalUV = ParallaxMapping(shaderTexCoord, viewDirTangent);
@@ -277,7 +273,6 @@ void main() {
         normalDir = normalize(shaderTBN[2]); 
     }
 
- // view to tangent for parallax mapping
 
     vec3 result = vec3(0.0f);
 
@@ -326,10 +321,8 @@ void main() {
         fragmentColor = vec4(result, alpha);
     } 
     else if (isReflective) {
-        // Override diffuse with a dark glass tint — ignore diffuseMap entirely
         vec3 glassTint = vec3(0.05f, 0.07f, 0.12f); // very dark blue-grey
         
-        // Compute ambient contribution only (no diffuse from lights for glass)
         vec3 ambient = vec3(0.0f);
         for (int i = 0; i < 1; i++) ambient += dir_lights[i].ambient;
         for (int i = 0; i < 2; i++) ambient += spotlights[i].ambient;
@@ -337,7 +330,6 @@ void main() {
 
         vec3 glassResult = ambient * glassTint;
 
-        // Sample cubemap
         vec3 fragWorldPos = worldSpacePosition;
         vec3 viewDirWorld = normalize(fragWorldPos - cameraWorldPos);
         vec3 normalWorld = normalize(inverseViewRotation * normalDir);
@@ -353,7 +345,7 @@ void main() {
 
     if (enableFog) {
         float depth = length(shaderPosition);
-        float fogFactor = clamp((fogEnd - depth) / (fogEnd - fogStart), 0.0, 1.0);
+        float fogFactor = clamp((fogEnd - depth)/(fogEnd - fogStart), 0.0, 1.0);
         fragmentColor = vec4(mix(fogColor, fragmentColor.rgb, fogFactor), fragmentColor.a);
     }
 }
