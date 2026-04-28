@@ -8,7 +8,13 @@
  *  
  * To move spotlight, press 3 or 4 to switch to spotlight camera, then use 
  * the same set of keys to move the spotlight and mouse to adjust its direction;
- * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle. 
+ * use scroll wheel to adjust spotlight cutoff angles. Z/X to adjust outer cutoff angle.
+ *
+ * Press 5 to toggle shadows on/off
+ * Press +/= to increase PCF sample quality (more samples = softer shadows)
+ * Press - to decrease PCF sample quality (fewer samples = sharper shadows)
+ * Press ] to increase PCF radius (larger sampling area = softer shadows)
+ * Press [ to decrease PCF radius (smaller sampling area = sharper shadows)
  *****************************************************************************/
 
 #include <iostream>
@@ -128,15 +134,21 @@ std::vector<GLuint> spotShadowTextures;
 std::vector<glm::mat4> spotLightTransforms;
 
 GLuint shadowMapShader;   // shadow map shader
+bool enableShadows = true;
 
 GLuint offsetTexture; // noise texture for PCF sampling
 #define PI 3.14159265358979323846f
 
-// std::vector<GLuint> shadowMapFbo;
-// std::vector<GLuint> shadowMapTexture;
-// GLuint shadowMapShader; 
+// pcf adjustable parameters
+float pcfRadius = 8.0f;
+int pcfFilterSize = 7;
 
-bool enableShadows = true;
+// hard restrictions for PCF parameters to prevent extreme values
+const int PCF_MIN_FILTER = 3;
+const int PCF_MAX_FILTER = 11;   
+const float PCF_MIN_RADIUS = 1.0f;
+const float PCF_MAX_RADIUS = 20.0f;
+
 
 /*------------------FISH--------------------*/
 
@@ -331,43 +343,6 @@ glm::vec3 avoidBoundingBox(const Fish& fish, const glm::vec3& boxMin, const glm:
     return glm::normalize(toFish) * strength;
 }
 
-void computeNextFishStates_old(float time) {
-    for (auto& f : fishes) {
-        glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
-        glm::vec3 avoid = avoidNeighbors(f, fishes) * AVOID_WEIGHT;
-        glm::vec3 wall = avoidWalls(f) * AVOID_WEIGHT;
-
-        // get obstacles
-        glm::vec3 obstacle(0.0f);
-        for (const AABB& box : aabbs) {
-            obstacle += avoidBoundingBox(f, box.min, box.max) * OBSTACLE_WEIGHT;
-        }
-
-        // glm::vec3 steering = flow + avoid + wall + obstacle;
-
-        // glm::vec3 desiredDir = glm::normalize(steering);  
-        // glm::vec3 currentDir = glm::normalize(f.velocity);
-        // glm::vec3 newDir = glm::normalize(glm::mix(currentDir, desiredDir, TURN_RATE)); // smooth turning
-
-        // // new basis
-        // glm::vec3 forward = newDir;
-        // glm::vec3 right = glm::normalize(glm::cross(WORLD_UP, forward));
-        // glm::vec3 up = glm::normalize(glm::cross(forward, right));
-
-        // glm::mat3 rotationMatrix(right, up, forward);
-        // f.orientation = glm::quat_cast(rotationMatrix);
-
-        // f.velocity = forward;
-        // f.position += f.velocity * f.speed * (DT / 16.0f);
-
-        glm::vec3 desiredVelocity = glm::normalize(flow + avoid + wall + obstacle);
-        f.velocity = glm::mix(f.velocity, desiredVelocity, TURN_RATE); // smooth turning 
-        f.position += f.velocity * f.speed * (DT / 16.0f); // adjust speed based on frame time 
-        f.orientation = glm::quatLookAt(f.velocity, glm::vec3(0.0f, 1.0f, 0.0f)); // orient
-
-    }
-}
-
 void computeNextFishStates(float time) {
     for (auto& f : fishes) {
         glm::vec3 flow = flowField(f.position, time) * FLOW_WEIGHT;
@@ -521,22 +496,27 @@ bool setupShadowMaps()
 
 void drawSceneGeometry() {
     // station
+    glUniform1i(glGetUniformLocation(shadowMapShader, "isInstanced"), 0);
     glBindVertexArray(vaos[0]);
     glDrawArrays(GL_TRIANGLES, 0, station.size() / 11);
     
     // train
+    glUniform1i(glGetUniformLocation(shadowMapShader, "isInstanced"), 0);
     glBindVertexArray(vaos[1]);
     glDrawArrays(GL_TRIANGLES, 0, train.size() / 11);
 
     // water
+    glUniform1i(glGetUniformLocation(shadowMapShader, "isInstanced"), 0);
     glBindVertexArray(vaos[2]);
     glDrawArrays(GL_TRIANGLES, 0, water.size() / 11);
 
-    // fish
+    // fish (instanced)
+    glUniform1i(glGetUniformLocation(shadowMapShader, "isInstanced"), 1);
     glBindVertexArray(instancedVao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, fish.size() / 11, NUM_FISH);
 
     // cave
+    glUniform1i(glGetUniformLocation(shadowMapShader, "isInstanced"), 0);
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, cave.size() / 11);
 
@@ -558,7 +538,7 @@ void renderDirectionalShadows(int index, Light& light) {
     glUseProgram(shadowMapShader);
 
     // ... set up the light space matrix... FOR DIRECTIONAL LIGHTS
-    float bounds = 45.0f;
+    float bounds = 25.0f;
     glm::mat4 lightTransform;
     lightTransform = glm::ortho(-bounds, bounds, -bounds, bounds, 0.1f, 100.0f) * 
                     glm::lookAt(light.getPosition(),           // light position
@@ -572,7 +552,8 @@ void renderDirectionalShadows(int index, Light& light) {
     glm::mat4 modelTransform = glm::mat4(1.0f);
     glUniformMatrix4fv(glGetUniformLocation(shadowMapShader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
-
+    
+    // Note: isInstanced is set per-draw call in drawSceneGeometry
     drawSceneGeometry();
 
     // set the framebuffer back to the default onscreen buffer
@@ -688,12 +669,23 @@ void createTexture(int windowSize, int filterSize, const std::vector<float>& dat
 
 void setupPCF() {
     int windowSize = 12;
-    int filterSize = 7;
 
     std::vector<float> offsetData;
-    generateOffsetTextureData(windowSize, filterSize, offsetData);
-    createTexture(windowSize, filterSize, offsetData);
+    generateOffsetTextureData(windowSize, pcfFilterSize, offsetData);
+    createTexture(windowSize, pcfFilterSize, offsetData);
+}
 
+// regenerate PCF texture when filter size changes
+void regeneratePCF() {
+    int windowSize = 12;
+    
+    if (offsetTexture != 0) {
+        glDeleteTextures(1, &offsetTexture);
+    }
+    
+    std::vector<float> offsetData;
+    generateOffsetTextureData(windowSize, pcfFilterSize, offsetData);
+    createTexture(windowSize, pcfFilterSize, offsetData);
 }
 
 // called by the main function to do initial setup, such as uploading vertex
@@ -749,7 +741,8 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "specularMap"),  2);
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
-    glUniform1f(glGetUniformLocation(shader, "radius"), 8.0f);
+    glUniform1f(glGetUniformLocation(shader, "radius"), pcfRadius);
+    glUniform1i(glGetUniformLocation(shader, "pcfFilterSize"), pcfFilterSize);
     glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
 
     glUseProgram(simple_shader);
@@ -865,6 +858,10 @@ void render()
     glUseProgram(shader);
     glUniform1i(glGetUniformLocation(simple_shader, "isInstanced"), 0);
     glUniform1i(glGetUniformLocation(shader, "hasNormalAndSpecularMaps"), 1);
+
+    // update PCF parameters
+    glUniform1f(glGetUniformLocation(shader, "radius"), pcfRadius);
+    glUniform1i(glGetUniformLocation(shader, "pcfFilterSize"), pcfFilterSize);
 
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
@@ -1093,113 +1090,6 @@ void render()
 }
 
 /*****************************************************************************/
-
-// input handling function for controlling the camera; called by the main function every frame
-// void processInput(GLFWwindow *pWindow, float deltaTime) {
-//     float cameraSpeed = 1.5f * deltaTime;
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-//         cameraSpeed *= 2.0f;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_W) == GLFW_PRESS) {
-//         active_camera->position += active_camera->front * cameraSpeed;
-//     } 
-    
-//     if (glfwGetKey(pWindow, GLFW_KEY_S) == GLFW_PRESS) {
-//         active_camera->position += -active_camera->front * cameraSpeed;
-//     } 
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_D) == GLFW_PRESS) {
-//         active_camera->position += glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_A) == GLFW_PRESS) {
-//         active_camera->position += -glm::cross(active_camera->front, active_camera->up) * cameraSpeed;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_Q) == GLFW_PRESS) {
-//         active_camera->position += active_camera->up * cameraSpeed;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_E) == GLFW_PRESS) {
-//         active_camera->position += -active_camera->up * cameraSpeed;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_R) == GLFW_PRESS) {
-//         active_camera->position = glm::vec3(0.0f, 0.0f, 3.0f);
-//         active_camera->yaw = -90.0f;
-//         active_camera->pitch = 0.0f;
-//         active_camera->fov = 45.0f;
-//         active_camera->front = glm::vec3(0.0f, 0.0f, -1.0f);
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_Z) == GLFW_PRESS) {
-//         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
-//             Light* light = active_camera->owner;
-//             light->outer_cutoff += 30.0f * deltaTime;
-//             if (light->outer_cutoff > 90.0f) {
-//                 light->outer_cutoff = 90.0f;
-//             }
-//         }
-//         else {
-//             active_camera->fov += 30.0f * deltaTime;
-//             if (active_camera->fov > 90.0f) {
-//                 active_camera->fov = 90.0f;
-//             }
-//         }
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_X) == GLFW_PRESS) {
-//         if (active_camera->owner && active_camera->owner->type == Light::SPOTLIGHT) {
-//             Light* light = active_camera->owner;
-//             light->outer_cutoff -= 30.0f * deltaTime;
-//             if (light->outer_cutoff < light->inner_cutoff) {
-//                 light->outer_cutoff = light->inner_cutoff;
-//             }
-//         }
-//         else {
-//             active_camera->fov -= 30.0f * deltaTime;
-//             if (active_camera->fov < 1.0f) {
-//                 active_camera->fov = 1.0f;
-//             }
-//         }
-//     }
-    
-//     if (glfwGetKey(pWindow, GLFW_KEY_F) == GLFW_PRESS) {
-//         glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_L) == GLFW_PRESS) {
-//         glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_P) == GLFW_PRESS) {
-//         glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_1) == GLFW_PRESS) {
-//         active_camera = &main_camera;
-//     }
-    
-//     if (glfwGetKey(pWindow, GLFW_KEY_2) == GLFW_PRESS) {
-//         // active_camera = &main_light.cam;
-//     }
-
-//     if (glfwGetKey(pWindow, GLFW_KEY_3) == GLFW_PRESS) {
-//         active_camera = &spotlights[0].cam;
-//     }
-//     if (glfwGetKey(pWindow, GLFW_KEY_4) == GLFW_PRESS) {
-//         active_camera = &spotlights[1].cam;
-//     }
-//     // toggle shadows on/off
-//     if (glfwGetKey(pWindow, GLFW_KEY_5) == GLFW_PRESS) {
-//         enableShadows = !enableShadows;
-//     }
-
-
-// }
-
 // for continuosly checking if certain keys are pressed and moving the camera accordingly
 void processInput(GLFWwindow *pWindow, float deltaTime) {
     float cameraSpeed = 1.5f * deltaTime;
@@ -1361,6 +1251,42 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
             break;
         case GLFW_KEY_5:
             enableShadows = !enableShadows;
+            break;
+
+        case GLFW_KEY_EQUAL:  // + key (shift+=)
+            if (pcfFilterSize < PCF_MAX_FILTER) {
+                pcfFilterSize += 2;  // increase by odd numbers to avoid even sizes
+                if (pcfFilterSize > PCF_MAX_FILTER) pcfFilterSize = PCF_MAX_FILTER;
+                regeneratePCF();
+                std::cout << "PCF Filter Size: " << pcfFilterSize << "x" << pcfFilterSize 
+                          << " (" << (pcfFilterSize * pcfFilterSize) << " samples)\n";
+            }
+            break;
+
+        case GLFW_KEY_MINUS:
+            if (pcfFilterSize > PCF_MIN_FILTER) {
+                pcfFilterSize -= 2;  // decrease by odd numbers
+                if (pcfFilterSize < PCF_MIN_FILTER) pcfFilterSize = PCF_MIN_FILTER;
+                regeneratePCF();
+                std::cout << "PCF Filter Size: " << pcfFilterSize << "x" << pcfFilterSize 
+                          << " (" << (pcfFilterSize * pcfFilterSize) << " samples)\n";
+            }
+            break;
+
+        case GLFW_KEY_RIGHT_BRACKET:
+            if (pcfRadius < PCF_MAX_RADIUS) {
+                pcfRadius += 1.0f;
+                if (pcfRadius > PCF_MAX_RADIUS) pcfRadius = PCF_MAX_RADIUS;
+                std::cout << "PCF Radius: " << pcfRadius << "\n";
+            }
+            break;
+
+        case GLFW_KEY_LEFT_BRACKET:
+            if (pcfRadius > PCF_MIN_RADIUS) {
+                pcfRadius -= 1.0f;
+                if (pcfRadius < PCF_MIN_RADIUS) pcfRadius = PCF_MIN_RADIUS;
+                std::cout << "PCF Radius: " << pcfRadius << "\n";
+            }
             break;
 
     }
