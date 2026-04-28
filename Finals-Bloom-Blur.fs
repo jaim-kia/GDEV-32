@@ -6,6 +6,7 @@ uniform bool horizontal;
 out vec4 fragmentColor;
 
 // 9-tap gaussian weights
+// reference: https://www.youtube.com/watch?v=cChJgqPE6LE
 uniform float weight[5] = float[](0.227027, 0.194595, 0.121622, 0.054054, 0.016216);
 
 void main() {

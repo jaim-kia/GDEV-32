@@ -190,56 +190,8 @@ glm::vec3 cubemapCapturePos[2] = {
 
 bool cubemapNeedsRender = true;
 
-// hardcoded unit cube, centered at origin
-float debugCubeVertices[] = {
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-     0.5f, -0.5f, -0.5f,  1.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,  0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
-
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-    -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  0.0f, 0.0f,  1.0f,   1.0f, 0.0f, 0.0f,
-
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,  -1.0f, 0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-     0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f, -0.5f, -0.5f,  1.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,   0.0f,  1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
-};
-
-GLuint debugCubeVao, debugCubeVbo;
-bool showDebugCube = false;
-
 // https://danielsieger.com/blog/2021/03/27/generating-spheres.html
-void generateDebugSphere(int stacks, int slices, float radius, std::vector<float>& data)
+void generateFireflies(int stacks, int slices, float radius, std::vector<float>& data)
 {
     data.clear();
 
@@ -314,10 +266,10 @@ GLuint pingTexture, pongTexture;
 
 GLuint quadVao, quadVbo;
 
-float bloomThreshold = 1.0f; // pixels brighter than this get bloomed
-float bloomStrength = 1.0f; // how much bloom adds on top
-float bloomExposure = 0.5f; // tone mapping exposure
-int bloomPasses = 10; // number of blur iterations, more = wider glow
+float bloomThreshold = 1.0f;
+float bloomStrength = 1.0f;
+float bloomExposure = 0.5f;
+int bloomPasses = 10;
 
 bool enableBloom = true;
 
@@ -604,8 +556,6 @@ void setupLights() {
     }
 }
 
-
-
 bool setupShadowMaps()
 {
     int numDir = 0, numSpot = 0;
@@ -676,7 +626,6 @@ bool setupShadowMaps()
     return true;
 }
 
-
 void drawSceneGeometry() {
     // Floor Mesh
     glBindVertexArray(vaos[0]);
@@ -691,23 +640,19 @@ void drawSceneGeometry() {
     glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
     // Lower Window
-    // glBindVertexArray(vaos[4]);
-    // glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
+    glBindVertexArray(vaos[4]);
+    glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
     // Higher Building
     glBindVertexArray(vaos[5]);
     glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
     // Higher Window
-    // glBindVertexArray(vaos[6]);
-    // glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+    glBindVertexArray(vaos[6]);
+    glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
 
     glBindVertexArray(vaos[8]);
     glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
-
-    // fish
-    // glBindVertexArray(instancedVao);
-    // glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
 
     glBindVertexArray(vaos[10]);
     glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
@@ -823,9 +768,6 @@ void renderSpotShadows(int index, Light& light) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     spotLightTransforms[index] = lightTransform;
-    
-
-
 }
 
 float randomFloat(float min, float max) {
@@ -880,7 +822,6 @@ void createTexture(int windowSize, int filterSize, const std::vector<float>& dat
     glGenTextures(1, &offsetTexture);
     glBindTexture(GL_TEXTURE_3D, offsetTexture);
     glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA32F, numFilterSamples / 2, windowSize, windowSize);
-    // glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, data.data());
     glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, numFilterSamples / 2, windowSize, windowSize, GL_RGBA, GL_FLOAT, &data[0]);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -901,7 +842,6 @@ void setupPCF() {
 // regenerate PCF texture when filter size changes
 void regeneratePCF() {
     int windowSize = 12;
-    
     if (offsetTexture != 0) {
         glDeleteTextures(1, &offsetTexture);
     }
@@ -1032,7 +972,6 @@ void uploadLightUniforms(const glm::mat4& viewMatrix) {
     }
     glUniform1i(glGetUniformLocation(shader, "numPointLights"), pointLightCount); // for point lights
 }
-
 
 void renderCubemap(int cubemapIndex) {
     glEnable(GL_DEPTH_TEST);
@@ -1209,7 +1148,6 @@ void renderCubemap(int cubemapIndex) {
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glEnable(GL_CULL_FACE); // restore
 }
 
@@ -1330,7 +1268,7 @@ bool setup()
     readModelData(TrainCart, "Finals-Data-TrainCart.txt");
     readModelData(LampPost, "Finals-Data-LampPost.txt");
     readModelData(LampBulb, "Finals-Data-LampBulb.txt");
-    generateDebugSphere(4, 4, 0.05f, InstanceMesh);
+    generateFireflies(4, 4, 0.05f, InstanceMesh);
 
     vertex_data[0] = FloorMesh;
     vertex_data[1] = BricksParallax;
@@ -1355,7 +1293,6 @@ bool setup()
     // vertex_data[4] = std::vector<float>(std::begin(tankVertices), std::end(tankVertices));
 
     initFish(); // since fireflies have lights lol
-
     setupLights();
 
     // upload the model to the GPU (explanations omitted for brevity)
@@ -1419,10 +1356,8 @@ bool setup()
     texture[1] = gdevLoadTexture("Tex-FloorMesh-Normals.png", GL_REPEAT, true, true);
 
     // Brick Elevation:
-    // texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
-    // texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
-    texture[2] = gdevLoadTexture("bricks2.jpg", GL_REPEAT, true, true);
-    texture[3] = gdevLoadTexture("bricks2_normal.jpg", GL_REPEAT, true, true);
+    texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.jpg", GL_REPEAT, true, true);
+    texture[3] = gdevLoadTexture("Tex-Parallax-Normals.jpg", GL_REPEAT, true, true);
 
     // Transparent Grass:
     texture[4] = gdevLoadTexture("Tex-Grass-Diffuse.png", GL_CLAMP_TO_EDGE, true, true);
@@ -1476,8 +1411,7 @@ bool setup()
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
 
     // Brick Height Map:
-    // texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
-    texture[27] = gdevLoadTexture("bricks2_disp.jpg", GL_REPEAT, true, true);
+    texture[27] = gdevLoadTexture("Tex-Parallax-Height.jpg", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1556,30 +1490,10 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "cubemap[1]"), 8);
     glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
     glUniform1f(glGetUniformLocation(shader, "reflectivity"), 0.5f); 
-
-    // renderCubemap();
-
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
     glActiveTexture(GL_TEXTURE8);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
-
-    // debug cube stuff
-    glGenVertexArrays(1, &debugCubeVao);
-    glGenBuffers(1, &debugCubeVbo);
-    glBindVertexArray(debugCubeVao);
-    glBindBuffer(GL_ARRAY_BUFFER, debugCubeVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(debugCubeVertices), debugCubeVertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) 0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (3 * sizeof(float)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (5 * sizeof(float)));
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*) (8 * sizeof(float)));
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
-    glBindVertexArray(0);
 
     return true;
 }
@@ -1588,7 +1502,7 @@ glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
 {
     glm::mat4 M = glm::mat4(1.0f);
 
-    // I - 2(n cross n) for rotation
+    // householder transformations
     M[0][0] = 1 - 2*n.x*n.x;
     M[0][1] =   - 2*n.y*n.x;
     M[0][2] =   - 2*n.z*n.x;
@@ -1613,10 +1527,8 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
-    
     glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                     1, GL_FALSE, glm::value_ptr(mirrorMat));
-
 
     // Renders:
     // 1) Floor Mesh: hasNormal, No for the rest
@@ -1645,32 +1557,24 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glDrawArrays(GL_TRIANGLES, 0, BricksParallax.size() / 11);
     glUniform1i(glGetUniformLocation(shader, "useParallax"), 0);
 
-    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     // 3) Lower Building: Just Use Diffuse, no normal nor specular
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[5]);
     glBindVertexArray(vaos[3]);
     glDrawArrays(GL_TRIANGLES, 0, LowerBuilding.size() / 11);
 
-
-    // 5) Higher Building: Just Use Diffuse, no normal nor specular
+    // 4) Higher Building: Just Use Diffuse, no normal nor specular
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[5]); // uses same texture as other 
+    glBindTexture(GL_TEXTURE_2D, texture[5]); 
     glBindVertexArray(vaos[5]);
     glDrawArrays(GL_TRIANGLES, 0, HigherBuilding.size() / 11);
 
-
     // 5) Tree Bark: Just Use Diffuse, no normal nor specular
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[9]); // uses same texture as other 
+    glBindTexture(GL_TEXTURE_2D, texture[9]); 
     glBindVertexArray(vaos[8]);
     glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
-
-    // 5) Mirror Plane
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
-    // glBindVertexArray(vaos[10]);
-    // glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
     // 6) Side Station
     glActiveTexture(GL_TEXTURE0);
@@ -1695,7 +1599,6 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glBindVertexArray(vaos[13]);
     glDrawArrays(GL_TRIANGLES, 0, BusStation.size() / 11);
 
-    
     // 9) Miscellaneous
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[16]);
@@ -1711,10 +1614,9 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glBindVertexArray(vaos[15]);
     glDrawArrays(GL_TRIANGLES, 0, Water.size() / 11);
 
-
+    // 11) Station
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1);
     glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 1);
-    // 11) Station
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[19]);
     glActiveTexture(GL_TEXTURE1);
@@ -1723,6 +1625,7 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glBindTexture(GL_TEXTURE_2D, texture[21]);
     glBindVertexArray(vaos[16]);
     glDrawArrays(GL_TRIANGLES, 0, TrainStation.size() / 11);
+
     // 12) Train Carts
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[22]);
@@ -1735,11 +1638,13 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
     glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
 
+    // 13) Lamp Posts
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[25]);
     glBindVertexArray(vaos[18]);
     glDrawArrays(GL_TRIANGLES, 0, LampPost.size() / 11);
 
+    // 14) Lamp Bulbs - emissive
     glUniform1i(glGetUniformLocation(shader, "isEmissive"), 1); // for bloom on lamp bulbs
     glUniform3f(glGetUniformLocation(shader, "emissiveColor"), 3.0f, 2.5f, 1.5f);
     glActiveTexture(GL_TEXTURE0);
@@ -1774,11 +1679,6 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture[8]);
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, texture[10]);
-    // glActiveTexture(GL_TEXTURE2);
-    // glBindTexture(GL_TEXTURE_2D, texture[11]);
-    
     
     glBindVertexArray(instancedVao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, InstanceMesh.size() / 11, NUM_FISH);
@@ -1820,7 +1720,16 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
         // reset
         glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
         glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
+    } else {
+        // else, use the window diffuse tex
+        // lower windows
+        glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse lol
+        glBindVertexArray(vaos[4]);
+        glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
+        // higher windows
+        glBindVertexArray(vaos[6]);
+        glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
     }
 
     // GRASS
@@ -1849,8 +1758,6 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
         glBindVertexArray(vaos[9]);
         glDrawArrays(GL_TRIANGLES, 0, TreeLeaves.size() / 11);
 
-        // glDisable(GL_BLEND);
-        // glEnable(GL_CULL_FACE);
     }
     
     glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
@@ -1967,7 +1874,6 @@ void render()
     glfwGetFramebufferSize(pWindow, &width, &height);
     glViewport(0, 0, width, height);
 
-
     // clear the whole frame
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -1997,21 +1903,16 @@ void render()
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
                        1, GL_FALSE, glm::value_ptr(viewTransform));
 
-    
     // uploading camera position
     glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
              1, glm::value_ptr(active_camera->position));
-
 
     // ... set up the model matrix... (just identity for this demo)
     glm::mat4 modelTransform = glm::mat4(1.0f);
     glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                        1, GL_FALSE, glm::value_ptr(modelTransform));
 
-   
-    
     uploadLightUniforms(viewTransform);
-    
 
     glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
     
@@ -2054,12 +1955,13 @@ void render()
     glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
 
     // do mirror plane stuff first 
+    // I put this n and mirrorPoint manually from the Finals-Data-MirrorPlane.txt
     glm::vec3 n = glm::normalize(glm::vec3(-0.9848f, 0.1736f, 0.0f));
     glm::vec3 mirrorPoint = glm::vec3(19.272734f, 2.855113f, 5.277397f);
     float d = glm::dot(n, mirrorPoint); // used for reflection matrix
     glm::mat4 mirrorMatrix = buildReflectionMatrix(n, d);
     
-    glm::mat4 lol(1.0f);
+    // glm::mat4 lol(1.0f);
 
     glm::vec3 clipNormal = -n;
     float clipD = glm::dot(clipNormal, mirrorPoint);
@@ -2096,7 +1998,6 @@ void render()
     glFrontFace(GL_CW);
 
     drawScene(projectionTransform, viewTransform, mirrorMatrix);
-    // std::cout << "Drew mirrored scene" << std::endl;
     glFrontFace(GL_CCW);
 
     glDisable(GL_CLIP_DISTANCE0);
@@ -2127,16 +2028,6 @@ void render()
 
     drawScene(projectionTransform, viewTransform);
     drawPostProcess();
-
-    // print main camera pos every 1 second for debugging
-    // if (glfwGetTime() - lastPrintTime >= 1.0f) {
-    //     std::cout << "Camera Position: (" 
-    //               << active_camera->position.x << ", " 
-    //               << active_camera->position.y << ", " 
-    //               << active_camera->position.z << ")" << std::endl;
-    //     lastPrintTime = glfwGetTime();
-    // }
-
 }
 
 /*****************************************************************************/
@@ -2350,9 +2241,6 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
 
         case GLFW_KEY_G:
             showGrassLeaves = !showGrassLeaves;
-            break;
-        case GLFW_KEY_C:
-            showDebugCube = !showDebugCube;
             break;
         case GLFW_KEY_B:
             enableBloom = !enableBloom;

@@ -234,16 +234,6 @@ float inShadowSpotlight(int index)
     return PCFRandomSampling(position, spotShadowArray, index);
 }
 
-// vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
-// {
-//     float height = texture(heightMap, texCoords).r;
-//     vec2 p = viewDirTangent.xy / viewDirTangent.z * (height * heightScale);
-//     // float depth = height * heightScale;
-
-//     // return texCoords - viewDirTangent.xy * depth;
-//     return texCoords - p;
-// }
-
 vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
 {
     const float numLayers = 10.0;
@@ -258,6 +248,7 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
     
     while(currentLayerDepth < currentDepthMapValue)
     {
+        // from learnopengl
         // shift texture coordinates along direction of P
         currentTexCoords -= deltaTexCoords;
         // get depthmap value at current texture coordinates
@@ -267,13 +258,6 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDirTangent)
     }
 
     return currentTexCoords;
-
-    // float height = texture(heightMap, texCoords).r;
-    // vec2 p = viewDirTangent.xy / viewDirTangent.z * (height * heightScale);
-    // // float depth = height * heightScale;
-
-    // // return texCoords - viewDirTangent.xy * depth;
-    // return texCoords - p;
 }
 
 
@@ -296,7 +280,6 @@ void main() {
     else {
         finalUV = shaderTexCoord;
     }
-    
 
     vec3 normalDir;
     if (hasNormal) {
@@ -307,7 +290,6 @@ void main() {
     else {
         normalDir = normalize(shaderTBN[2]); 
     }
-
 
     vec3 result = vec3(0.0f);
 
@@ -342,10 +324,6 @@ void main() {
 
     vec3 diffuseColor = vec3(texture(diffuseMap, finalUV));
     result += ambient * diffuseColor;
-    // result += diffuseColor * 0.05f;
-
-    // result = vec3(0.5f);
-    // fragmentColor = vec4(result, 1.0f);
 
     if (isEmissive) {
         fragmentColor = vec4(emissiveColor, 1.0);
