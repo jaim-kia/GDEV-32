@@ -164,7 +164,7 @@ GLuint offsetTexture; // noise texture for PCF sampling
 bool enableShadows = true;
 
 // grass toggle
-bool showGrassLeaves = true;
+bool showGrassLeaves = false;
 
 // environment map stuff
 #define CUBEMAP_SIZE 512
@@ -1213,9 +1213,8 @@ bool setupBloom() {
     // depth renderbuffer
     glGenRenderbuffers(1, &hdrDepthRbo);
     glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                              GL_RENDERBUFFER, hdrDepthRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, hdrDepthRbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "HDR framebuffer incomplete.\n";
@@ -1456,7 +1455,7 @@ bool setup()
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
 
     // Brick Height Map:
-    texture[27] = gdevLoadTexture("Tex-Parallax-Height.jpeg", GL_REPEAT, true, true);
+    texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1563,129 +1562,39 @@ bool setup()
     return true;
 }
 
-// called by the main function to do rendering per frame
-void render()
+glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
 {
-    // render cubemap
-    if (cubemapNeedsRender) {
-        int dirIdx = 0, spotIdx = 0;
-        for (auto* light : lights) {
-            if (light->type == Light::DIRECTIONAL) renderDirectionalShadows(dirIdx++, *light);
-            else if (light->type == Light::SPOTLIGHT) renderSpotShadows(spotIdx++, *light);
-        }
-        renderCubemap(0);
-        renderCubemap(1);
+    glm::mat4 M = glm::mat4(1.0f);
 
-        glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
-        glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
-        cubemapNeedsRender = false;
-    }   
+    // I - 2(n cross n) for rotation
+    M[0][0] = 1 - 2*n.x*n.x;
+    M[0][1] =   - 2*n.y*n.x;
+    M[0][2] =   - 2*n.z*n.x;
 
-    // draw shadow map
-    if (enableShadows) {
-        int dirIdx = 0, spotIdx = 0;
-        for (auto* light : lights) {
-            if (light->type == Light::DIRECTIONAL) {
-                renderDirectionalShadows(dirIdx++, *light);
-            } 
-            else if (light->type == Light::SPOTLIGHT) {
-                renderSpotShadows(spotIdx++, *light);
-            } 
-            else if (light->type == Light::POINT) {
-                // TODO: lol
-            }
-        }
-    }
+    M[1][0] =   - 2*n.x*n.y;
+    M[1][1] = 1 - 2*n.y*n.y;
+    M[1][2] =   - 2*n.z*n.y;
 
-    glBindFramebuffer(GL_FRAMEBUFFER, hdrFbo); // bind HDR framebuffer for main scene rendering
+    M[2][0] =   - 2*n.x*n.z;
+    M[2][1] =   - 2*n.y*n.z;
+    M[2][2] = 1 - 2*n.z*n.z;
 
-    // before drawing the final scene, we need to set drawing to the whole window
-    int width, height;
-    glfwGetFramebufferSize(pWindow, &width, &height);
-    glViewport(0, 0, width, height);
+    // translationn
+    // t = 2 * d * n
+    M[3][0] = 2*d*n.x;
+    M[3][1] = 2*d*n.y;
+    M[3][2] = 2*d*n.z;
+    return M;
+}
 
-    // clear the whole frame
-    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4 mirrorMat = glm::mat4(1.0f)) {
 
-    // using our shader program...
-    glUseProgram(shader);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
     
-    glUniform1f(glGetUniformLocation(shader, "time"), (float)glfwGetTime());
-    // ... set up the projection matrix...
-    glm::mat4 projectionTransform;
-    projectionTransform = glm::perspective(glm::radians(active_camera->fov),      // fov
-                                           (float) WINDOW_WIDTH / WINDOW_HEIGHT,  // aspect ratio
-                                           0.1f,                                  // near plane
-                                           100.0f);                               // far plane
-    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
-                       1, GL_FALSE, glm::value_ptr(projectionTransform));
-
-    // ... set up the view matrix...
-    glm::mat4 viewTransform;
-    viewTransform = glm::lookAt(active_camera->position,                // eye position
-                                active_camera->position + active_camera->front,   // center position
-                                active_camera->up);  // up vector
-    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
-                       1, GL_FALSE, glm::value_ptr(viewTransform));
-
-    
-    // uploading camera position
-    glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
-             1, glm::value_ptr(active_camera->position));
-
-
-    // ... set up the model matrix... (just identity for this demo)
-    glm::mat4 modelTransform = glm::mat4(1.0f);
     glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-                       1, GL_FALSE, glm::value_ptr(modelTransform));
+                    1, GL_FALSE, glm::value_ptr(mirrorMat));
 
-   
-    
-    uploadLightUniforms(viewTransform);
-    
-    
-    glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
-
-    // fog stuff
-    glUniform1i(glGetUniformLocation(shader, "enableFog"), enableFog);
-    glUniform1f(glGetUniformLocation(shader, "fogStart"), fogStart);
-    glUniform1f(glGetUniformLocation(shader, "fogEnd"), fogEnd);
-    glUniform3fv(glGetUniformLocation(shader, "fogColor"), 1, glm::value_ptr(fogColor));
-
-    if (enableShadows) {
-        for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
-            std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
-            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
-                            1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
-        }
-        for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
-            std::string name = "spotLightTransforms[" + std::to_string(i) + "]";
-            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
-                            1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
-        }
-
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
-
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
-
-        glActiveTexture(GL_TEXTURE12);
-        glBindTexture(GL_TEXTURE_3D, offsetTexture);
-        glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
-    }
-
-    // Setting Up Default Uniforms
-    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
-    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
-    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
-    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
-    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
-    
 
     // Renders:
     // 1) Floor Mesh: hasNormal, No for the rest
@@ -1736,10 +1645,10 @@ void render()
     glDrawArrays(GL_TRIANGLES, 0, TreeBark.size() / 11);
 
     // 5) Mirror Plane
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
-    glBindVertexArray(vaos[10]);
-    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, texture[6]); // Temp/black Pic
+    // glBindVertexArray(vaos[10]);
+    // glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
     // 6) Side Station
     glActiveTexture(GL_TEXTURE0);
@@ -1828,7 +1737,7 @@ void render()
         m = glm::translate(m, f.position);
         m *= glm::mat4_cast(f.orientation);
         // m = glm::scale(m, glm::vec3(0.5f));
-        fishMatrices[i] = m;
+        fishMatrices[i] = mirrorMat * m;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, instancedVboMatrix);
@@ -1857,73 +1766,39 @@ void render()
     /*--------------------------------------------------*/
 
     // --- Windows (reflective) ---
-    glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
-    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
-    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
-    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
-
-    // convert reflection vectors from camera space to world space
-    glm::mat3 invViewRot = glm::transpose(glm::mat3(viewTransform));
-    glUniformMatrix3fv(glGetUniformLocation(shader, "inverseViewRotation"),
-                    1, GL_FALSE, glm::value_ptr(invViewRot));
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse
-
-    // lower windows
-    glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
-    // glActiveTexture(GL_TEXTURE7);
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
-    glBindVertexArray(vaos[4]);
-    glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
-
-
-    // higher windows
-    glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 1);
-    // glActiveTexture(GL_TEXTURE8);
-    // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
-    glBindVertexArray(vaos[6]);
-    glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
-
-    // reset
-    glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
-    glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
-
-    // debug cube
-    if (showDebugCube) {
+    if (mirrorMat == glm::mat4(1.0f)) {
         glUniform1i(glGetUniformLocation(shader, "isReflective"), 1);
-        glUniform1i(glGetUniformLocation(shader, "hasNormal"),    0);
-        glUniform1i(glGetUniformLocation(shader, "hasSpecular"),  0);
-        glUniform1i(glGetUniformLocation(shader, "isTile"),       0);
-        glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+        glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0);
+        glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+        glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-        // Place the cube somewhere visible — adjust as needed
-        glm::mat4 cubeModel = glm::mat4(1.0f);
-        cubeModel = glm::translate(cubeModel, glm::vec3(0.0f, 1.0f, 0.0f));
-        cubeModel = glm::scale(cubeModel, glm::vec3(2.0f));  // 2 unit cube
-        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-                        1, GL_FALSE, glm::value_ptr(cubeModel));
-
-        // inverseViewRotation converts reflection dir from camera to world space
+        // convert reflection vectors from camera space to world space
         glm::mat3 invViewRot = glm::transpose(glm::mat3(viewTransform));
         glUniformMatrix3fv(glGetUniformLocation(shader, "inverseViewRotation"),
                         1, GL_FALSE, glm::value_ptr(invViewRot));
 
-        // No diffuse texture needed for a pure reflection test,
-        // but the shader still samples diffuseMap so bind something valid
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture[6]);
+        glBindTexture(GL_TEXTURE_2D, texture[6]); // window diffuse
 
-        glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+        // lower windows
+        glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
+        // glActiveTexture(GL_TEXTURE7);
+        // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+        glBindVertexArray(vaos[4]);
+        glDrawArrays(GL_TRIANGLES, 0, LowerWindow.size() / 11);
 
-        glBindVertexArray(debugCubeVao);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        // Reset
+        // higher windows
+        glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 1);
+        // glActiveTexture(GL_TEXTURE8);
+        // glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
+        glBindVertexArray(vaos[6]);
+        glDrawArrays(GL_TRIANGLES, 0, HigherWindow.size() / 11);
+
+        // reset
+        glUniform1i(glGetUniformLocation(shader, "cubemapIndex"), 0);
         glUniform1i(glGetUniformLocation(shader, "isReflective"), 0);
-        glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
-                        1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+
     }
 
     // GRASS
@@ -1938,7 +1813,7 @@ void render()
         glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
         glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
 
-        glm::mat4 identityModel = glm::mat4(1.0f);
+        glm::mat4 identityModel = mirrorMat;
         glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
                         1, GL_FALSE, glm::value_ptr(identityModel));
 
@@ -1952,11 +1827,22 @@ void render()
         glBindVertexArray(vaos[9]);
         glDrawArrays(GL_TRIANGLES, 0, TreeLeaves.size() / 11);
 
-        glDisable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
-        glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+        // glDisable(GL_BLEND);
+        // glEnable(GL_CULL_FACE);
     }
+    
+    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
 
+    glm::mat4 resetModel = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                    1, GL_FALSE, glm::value_ptr(resetModel));
+
+    // std::cout << mirrorMat[0][0] << " " << mirrorMat[1][1] << " " << mirrorMat[2][2] << std::endl;
+}
+
+void drawPostProcess() {
     // pass 2: post process bloom
     glDisable(GL_DEPTH_TEST); // depth not needed for post process
     if (enableBloom) {
@@ -2014,6 +1900,207 @@ void render()
     }
     
     glEnable(GL_DEPTH_TEST); // restore for next frame
+}
+
+// called by the main function to do rendering per frame
+void render()
+{
+    // render cubemap
+    if (cubemapNeedsRender) {
+        int dirIdx = 0, spotIdx = 0;
+        for (auto* light : lights) {
+            if (light->type == Light::DIRECTIONAL) renderDirectionalShadows(dirIdx++, *light);
+            else if (light->type == Light::SPOTLIGHT) renderSpotShadows(spotIdx++, *light);
+        }
+        renderCubemap(0);
+        renderCubemap(1);
+
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[0]);
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture[1]);
+        cubemapNeedsRender = false;
+    }   
+
+    // draw shadow map
+    if (enableShadows) {
+        int dirIdx = 0, spotIdx = 0;
+        for (auto* light : lights) {
+            if (light->type == Light::DIRECTIONAL) {
+                renderDirectionalShadows(dirIdx++, *light);
+            } 
+            else if (light->type == Light::SPOTLIGHT) {
+                renderSpotShadows(spotIdx++, *light);
+            } 
+            else if (light->type == Light::POINT) {
+                // TODO: lol
+            }
+        }
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFbo); // bind HDR framebuffer for main scene rendering
+
+    // before drawing the final scene, we need to set drawing to the whole window
+    int width, height;
+    glfwGetFramebufferSize(pWindow, &width, &height);
+    glViewport(0, 0, width, height);
+
+
+    // clear the whole frame
+    glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    // using our shader program...
+    glUseProgram(shader);
+    
+    glUniform1f(glGetUniformLocation(shader, "time"), (float)glfwGetTime());
+    // ... set up the projection matrix...
+    glm::mat4 projectionTransform;
+    projectionTransform = glm::perspective(glm::radians(active_camera->fov),      // fov
+                                           (float) WINDOW_WIDTH / WINDOW_HEIGHT,  // aspect ratio
+                                           0.1f,                                  // near plane
+                                           100.0f);                               // far plane
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
+                       1, GL_FALSE, glm::value_ptr(projectionTransform));
+
+    // ... set up the view matrix...
+    glm::mat4 viewTransform;
+    viewTransform = glm::lookAt(active_camera->position,                // eye position
+                                active_camera->position + active_camera->front,   // center position
+                                active_camera->up);  // up vector
+    glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"),
+                       1, GL_FALSE, glm::value_ptr(viewTransform));
+
+    
+    // uploading camera position
+    glUniform3fv(glGetUniformLocation(shader, "cameraWorldPos"),
+             1, glm::value_ptr(active_camera->position));
+
+
+    // ... set up the model matrix... (just identity for this demo)
+    glm::mat4 modelTransform = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                       1, GL_FALSE, glm::value_ptr(modelTransform));
+
+   
+    
+    uploadLightUniforms(viewTransform);
+    
+
+    glUniform1i(glGetUniformLocation(shader, "enableShadows"), enableShadows);
+    
+    // fog stuff
+    glUniform1i(glGetUniformLocation(shader, "enableFog"), enableFog);
+    glUniform1f(glGetUniformLocation(shader, "fogStart"), fogStart);
+    glUniform1f(glGetUniformLocation(shader, "fogEnd"), fogEnd);
+    glUniform3fv(glGetUniformLocation(shader, "fogColor"), 1, glm::value_ptr(fogColor));
+
+    if (enableShadows) {
+        // Upload light-space transform matrices
+        for (int i = 0; i < (int)directionalLightTransforms.size(); i++) {
+            std::string name = "directionalLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+                            1, GL_FALSE, glm::value_ptr(directionalLightTransforms[i]));
+        }
+        for (int i = 0; i < (int)spotLightTransforms.size(); i++) {
+            std::string name = "spotLightTransforms[" + std::to_string(i) + "]";
+            glUniformMatrix4fv(glGetUniformLocation(shader, name.c_str()),
+                            1, GL_FALSE, glm::value_ptr(spotLightTransforms[i]));
+        }
+
+        // Bind the shadow arrays to their fixed units
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, directionalShadowArray);
+
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, spotShadowArray);
+
+        glActiveTexture(GL_TEXTURE12);
+        glBindTexture(GL_TEXTURE_3D, offsetTexture);
+        glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
+    }
+
+    // Setting Up Default Uniforms
+    glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
+    glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
+    glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isTile"), 0);
+    glUniform1i(glGetUniformLocation(shader, "isAlphaBlended"), 0);
+
+    // do mirror plane stuff first 
+    glm::vec3 n = glm::normalize(glm::vec3(-0.9848f, 0.1736f, 0.0f));
+    glm::vec3 mirrorPoint = glm::vec3(19.272734f, 2.855113f, 5.277397f);
+    float d = glm::dot(n, mirrorPoint); // used for reflection matrix
+    glm::mat4 mirrorMatrix = buildReflectionMatrix(n, d);
+    
+    glm::mat4 lol(1.0f);
+
+    glm::vec3 clipNormal = -n;
+    float clipD = glm::dot(clipNormal, mirrorPoint);
+    glm::vec4 clipPlane = glm::vec4(clipNormal.x, clipNormal.y, clipNormal.z, -clipD);
+
+    //  1: draw mirror into stencil buffer
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glStencilMask(0xFF);
+    
+    // no need for color and depth for now
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
+
+    // the mirror:
+    glBindVertexArray(vaos[10]);
+    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+    // enable color and depth for the rest
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+
+    // 2: draw the scene (reflected) clipped to the stencil
+    glStencilFunc(GL_EQUAL, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilMask(0x00); // don't modify stencil anymore
+    glDisable(GL_CULL_FACE);
+
+    // clipped plane to be used in vs
+    glEnable(GL_CLIP_DISTANCE0);
+    glUniform4fv(glGetUniformLocation(shader, "clipPlane"), 1, glm::value_ptr(clipPlane));
+
+    glFrontFace(GL_CW);
+
+    drawScene(projectionTransform, viewTransform, mirrorMatrix);
+    std::cout << "Drew mirrored scene" << std::endl;
+    glFrontFace(GL_CCW);
+
+    glDisable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CULL_FACE);
+
+    // 3: mirror depth (placing mirror in the world):
+    // same stencil
+    glStencilFunc(GL_EQUAL, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilMask(0x00);
+
+    // no color but we need the depth
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); 
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_ALWAYS);
+
+    glBindVertexArray(vaos[10]);
+    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+    // revert back the normal and depth testing
+    glDepthFunc(GL_LESS);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    // 4: real world
+    glStencilMask(0xFF);
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glDisable(GL_STENCIL_TEST);
+
+    drawScene(projectionTransform, viewTransform);
+    drawPostProcess();
 
     // print main camera pos every 1 second for debugging
     // if (glfwGetTime() - lastPrintTime >= 1.0f) {

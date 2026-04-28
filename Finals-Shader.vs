@@ -13,6 +13,7 @@ uniform mat4 viewTransform;
 uniform mat4 modelTransform;
 // uniform mat4 lightTransforms[MAX_LIGHTS];
 uniform bool isInstanced;
+uniform vec4 clipPlane;
 
 uniform mat4 directionalLightTransforms[1];
 uniform mat4 spotLightTransforms[2];
@@ -61,4 +62,6 @@ void main()
     for (int i = 0; i < 2; i++) {
         spotLightSpacePositions[i] = spotLightTransforms[i] * finalModel * vec4(vertexPosition, 1.0f);
     }
+
+    gl_ClipDistance[0] = dot(worldPos, clipPlane);
 }
