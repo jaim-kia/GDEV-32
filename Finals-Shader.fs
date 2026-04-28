@@ -83,7 +83,8 @@ uniform float time;
 
 uniform bool isReflective;
 uniform float reflectivity;
-uniform samplerCube cubemap;
+uniform samplerCube cubemap[2];
+uniform int cubemapIndex;
 uniform mat3 inverseViewRotation;
 
 // bloom stuff
@@ -339,9 +340,9 @@ void main() {
         // Sample cubemap
         vec3 fragWorldPos = worldSpacePosition;
         vec3 viewDirWorld = normalize(fragWorldPos - cameraWorldPos);
-        vec3 normalWorld  = normalize(inverseViewRotation * normalDir);
-        vec3 reflectDir   = reflect(viewDirWorld, normalWorld);
-        vec4 envColor     = texture(cubemap, reflectDir);
+        vec3 normalWorld = normalize(inverseViewRotation * normalDir);
+        vec3 reflectDir = reflect(viewDirWorld, normalWorld);
+        vec4 envColor = texture(cubemap[cubemapIndex], reflectDir);
 
         vec3 blended = mix(glassResult, envColor.rgb, reflectivity);
         fragmentColor = vec4(blended, 1.0f);
