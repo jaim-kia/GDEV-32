@@ -258,9 +258,9 @@ void main() {
     else if (useParallax) {
         finalUV = ParallaxMapping(shaderTexCoord, viewDirTangent);
         
-        // if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
-        //     discard; // discard where UVs outside tex
-        // }
+        if (finalUV.x < 0.0f || finalUV.x > 1.0f || finalUV.y < 0.0f || finalUV.y > 1.0f) {
+            discard; // discard where UVs outside tex
+        }
     }
     else {
         finalUV = shaderTexCoord;
