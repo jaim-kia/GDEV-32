@@ -163,8 +163,19 @@ GLuint offsetTexture; // noise texture for PCF sampling
 
 bool enableShadows = true;
 
+// pcf adjustable parameters
+float pcfRadius = 8.0f;
+int pcfFilterSize = 7;
+
+// hard restrictions for PCF parameters to prevent extreme values
+const int PCF_MIN_FILTER = 3;
+const int PCF_MAX_FILTER = 11;   
+const float PCF_MIN_RADIUS = 1.0f;
+const float PCF_MAX_RADIUS = 20.0f;
+
+
 // grass toggle
-bool showGrassLeaves = false;
+bool showGrassLeaves = true;
 
 // environment map stuff
 #define CUBEMAP_SIZE 512
@@ -303,10 +314,10 @@ GLuint pingTexture, pongTexture;
 
 GLuint quadVao, quadVbo;
 
-float bloomThreshold = 1.0f;  // pixels brighter than this get bloomed
-float bloomStrength = 1.0f;  // how much bloom adds on top
-float bloomExposure = 0.5f;  // tone mapping exposure
-int bloomPasses = 10;  // number of blur iterations, more = wider glow
+float bloomThreshold = 1.0f; // pixels brighter than this get bloomed
+float bloomStrength = 1.0f; // how much bloom adds on top
+float bloomExposure = 0.5f; // tone mapping exposure
+int bloomPasses = 10; // number of blur iterations, more = wider glow
 
 bool enableBloom = true;
 
@@ -316,9 +327,7 @@ float lastPrintTime = 0.0f;
 // fog parameters
 float fogStart = 8.0f;
 float fogEnd = 64.0f;
-// glm::vec3 fogColor(0.67f, 0.68f, 0.69f);
 glm::vec3 fogColor(0.04f, 0.05f, 0.08f);
-// glm::vec3 fogColor(0.1f, 0.1f, 0.1f);
 
 bool enableFog = false;
 
@@ -332,8 +341,8 @@ float heightScale = 0.05f;
 const int NUM_FISH = 16;
 const int DT = 16; // milliseconds per frame (~60 FPS)
 const float TURN_RATE = 0.1f; // radians per frame
-const int MAX_SPEED = 30;
-const int MIN_SPEED = 20;
+const int MAX_SPEED = 15;
+const int MIN_SPEED = 10;
 
 const float AVOID_RADIUS = 0.4f;
 const float AVOID_WEIGHT = 0.5f;
@@ -435,10 +444,10 @@ void initFish() {
 
         Light* fireflyLight = new Light(Light::POINT);
         fireflyLight->externalPosition = &f.position;
-        fireflyLight->diffuse  = glm::vec3(0.8f, 0.6f, 0.2f); // warm yellow
-        fireflyLight->color    = glm::vec3(1.0f, 0.9f, 0.5f);
-        fireflyLight->constant  = 1.0f;
-        fireflyLight->linear    = 0.7f;
+        fireflyLight->diffuse = glm::vec3(0.8f, 0.6f, 0.2f); // warm yellow
+        fireflyLight->color = glm::vec3(1.0f, 0.9f, 0.5f);
+        fireflyLight->constant = 1.0f;
+        fireflyLight->linear = 0.7f;
         fireflyLight->quadratic = 1.8f;
         f.light = fireflyLight;
         lights.push_back(fireflyLight);
@@ -889,6 +898,19 @@ void setupPCF() {
 
 }
 
+// regenerate PCF texture when filter size changes
+void regeneratePCF() {
+    int windowSize = 12;
+    
+    if (offsetTexture != 0) {
+        glDeleteTextures(1, &offsetTexture);
+    }
+    
+    std::vector<float> offsetData;
+    generateOffsetTextureData(windowSize, pcfFilterSize, offsetData);
+    createTexture(windowSize, pcfFilterSize, offsetData);
+}
+
 bool setupCubemap() {
     for (int c = 0; c < 2; c++) {
         glGenTextures(1, &cubemapTexture[c]);
@@ -1015,7 +1037,6 @@ void uploadLightUniforms(const glm::mat4& viewMatrix) {
 void renderCubemap(int cubemapIndex) {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE); // needed so floor renders from below
-    // glm::vec3 capturePos = glm::vec3(0.0f, 2.0f, 0.0f); // TODO: add multiple capture positions
 
     glm::vec3 capturePos = cubemapCapturePos[cubemapIndex];
 
@@ -1035,7 +1056,6 @@ void renderCubemap(int cubemapIndex) {
     glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glViewport(0, 0, CUBEMAP_SIZE, CUBEMAP_SIZE);
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
-    // glClearColor(0.53f, 0.81f, 0.98f, 1.0f);
     glUseProgram(shader);
 
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"),
@@ -1247,7 +1267,6 @@ bool setupBloom() {
     }
 
     float quadVertices[] = {
-        // x      y      u     v
         -1.0f,  1.0f,  0.0f, 1.0f,
         -1.0f, -1.0f,  0.0f, 0.0f,
          1.0f, -1.0f,  1.0f, 0.0f,
@@ -1374,8 +1393,8 @@ bool setup()
     glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
 
     glUniform1f(glGetUniformLocation(shader, "shadowMapSize"), SHADOW_SIZE);
-    glUniform1f(glGetUniformLocation(shader, "radius"), 8.0f);
-    // glUniform2f(glGetUniformLocation(shader, "shadowTexelStep"), 1.0f / SHADOW_SIZE, 1.0f / SHADOW_SIZE);
+    glUniform1f(glGetUniformLocation(shader, "radius"), pcfRadius);
+    glUniform1i(glGetUniformLocation(shader, "pcfFilterSize"), pcfFilterSize);
 
     // texture unit layout
     // 0 - diffuse map
@@ -1400,8 +1419,10 @@ bool setup()
     texture[1] = gdevLoadTexture("Tex-FloorMesh-Normals.png", GL_REPEAT, true, true);
 
     // Brick Elevation:
-    texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
-    texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
+    // texture[2] = gdevLoadTexture("Tex-Parallax-Diffuse.png", GL_REPEAT, true, true);
+    // texture[3] = gdevLoadTexture("Tex-Parallax-Normals.png", GL_REPEAT, true, true);
+    texture[2] = gdevLoadTexture("bricks2.jpg", GL_REPEAT, true, true);
+    texture[3] = gdevLoadTexture("bricks2_normal.jpg", GL_REPEAT, true, true);
 
     // Transparent Grass:
     texture[4] = gdevLoadTexture("Tex-Grass-Diffuse.png", GL_CLAMP_TO_EDGE, true, true);
@@ -1455,7 +1476,8 @@ bool setup()
     texture[26] = gdevLoadTexture("Tex-LampBulb-Diffuse.png", GL_REPEAT, true, true);
 
     // Brick Height Map:
-    texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
+    // texture[27] = gdevLoadTexture("Tex-Parallax-Height.png", GL_REPEAT, true, true);
+    texture[27] = gdevLoadTexture("bricks2_disp.jpg", GL_REPEAT, true, true);
 
     if (! texture[0] || ! texture[1] || ! texture[2]
         || ! texture[3] || ! texture[4] || ! texture[5]
@@ -1844,7 +1866,7 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
 void drawPostProcess() {
     // pass 2: post process bloom
-    glDisable(GL_DEPTH_TEST); // depth not needed for post process
+    glDisable(GL_DEPTH_TEST); // depth not needed for post process lol
     if (enableBloom) {
         glBindFramebuffer(GL_FRAMEBUFFER, pingFbo);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -1894,7 +1916,7 @@ void drawPostProcess() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, hdrColorTexture);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, pingTexture); // bind something valid — multiplied by 0 anyway
+        glBindTexture(GL_TEXTURE_2D, pingTexture); // bind something valid lol
         glBindVertexArray(quadVao);
         glDrawArrays(GL_TRIANGLES, 0, 6); 
     }
@@ -1953,6 +1975,10 @@ void render()
     // using our shader program...
     glUseProgram(shader);
     
+    // update PCF parameters
+    glUniform1f(glGetUniformLocation(shader, "radius"), pcfRadius);
+    glUniform1i(glGetUniformLocation(shader, "pcfFilterSize"), pcfFilterSize);
+
     glUniform1f(glGetUniformLocation(shader, "time"), (float)glfwGetTime());
     // ... set up the projection matrix...
     glm::mat4 projectionTransform;
@@ -2020,7 +2046,7 @@ void render()
         glUniform1i(glGetUniformLocation(shader, "offsetTexture"), 12);
     }
 
-    // Setting Up Default Uniforms
+    // setting up default uniforms
     glUniform1i(glGetUniformLocation(shader, "isInstanced"), 0);
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 0); 
     glUniform1i(glGetUniformLocation(shader, "hasSpecular"), 0);
@@ -2060,7 +2086,7 @@ void render()
     // 2: draw the scene (reflected) clipped to the stencil
     glStencilFunc(GL_EQUAL, 1, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-    glStencilMask(0x00); // don't modify stencil anymore
+    glStencilMask(0x00); // don't modify stencil anymore :)
     glDisable(GL_CULL_FACE);
 
     // clipped plane to be used in vs
@@ -2070,7 +2096,7 @@ void render()
     glFrontFace(GL_CW);
 
     drawScene(projectionTransform, viewTransform, mirrorMatrix);
-    std::cout << "Drew mirrored scene" << std::endl;
+    // std::cout << "Drew mirrored scene" << std::endl;
     glFrontFace(GL_CCW);
 
     glDisable(GL_CLIP_DISTANCE0);
@@ -2240,10 +2266,6 @@ void scroll_callback(GLFWwindow *pWindow, double xoffset, double yoffset) {
 // handler called by GLFW when there is a keyboard event
 void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode)
 {
-    // // pressing Esc closes the window
-    // if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-    //     glfwSetWindowShouldClose(pWindow, GL_TRUE);
-    
     if (action != GLFW_PRESS) return;
 
     switch (key)
@@ -2290,6 +2312,42 @@ void handleKeys(GLFWwindow* pWindow, int key, int scancode, int action, int mode
         case GLFW_KEY_5:
             enableShadows = !enableShadows;
             break;
+        case GLFW_KEY_EQUAL:  // + key (shift+=)
+            if (pcfFilterSize < PCF_MAX_FILTER) {
+                pcfFilterSize += 2;  // increase by odd numbers to avoid even sizes
+                if (pcfFilterSize > PCF_MAX_FILTER) pcfFilterSize = PCF_MAX_FILTER;
+                regeneratePCF();
+                std::cout << "PCF Filter Size: " << pcfFilterSize << "x" << pcfFilterSize 
+                          << " (" << (pcfFilterSize * pcfFilterSize) << " samples)\n";
+            }
+            break;
+
+        case GLFW_KEY_MINUS:
+            if (pcfFilterSize > PCF_MIN_FILTER) {
+                pcfFilterSize -= 2;  // decrease by odd numbers
+                if (pcfFilterSize < PCF_MIN_FILTER) pcfFilterSize = PCF_MIN_FILTER;
+                regeneratePCF();
+                std::cout << "PCF Filter Size: " << pcfFilterSize << "x" << pcfFilterSize 
+                          << " (" << (pcfFilterSize * pcfFilterSize) << " samples)\n";
+            }
+            break;
+
+        case GLFW_KEY_RIGHT_BRACKET:
+            if (pcfRadius < PCF_MAX_RADIUS) {
+                pcfRadius += 1.0f;
+                if (pcfRadius > PCF_MAX_RADIUS) pcfRadius = PCF_MAX_RADIUS;
+                std::cout << "PCF Radius: " << pcfRadius << "\n";
+            }
+            break;
+
+        case GLFW_KEY_LEFT_BRACKET:
+            if (pcfRadius > PCF_MIN_RADIUS) {
+                pcfRadius -= 1.0f;
+                if (pcfRadius < PCF_MIN_RADIUS) pcfRadius = PCF_MIN_RADIUS;
+                std::cout << "PCF Radius: " << pcfRadius << "\n";
+            }
+            break;
+
         case GLFW_KEY_G:
             showGrassLeaves = !showGrassLeaves;
             break;
