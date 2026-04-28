@@ -1592,6 +1592,9 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glUniformMatrix4fv(glGetUniformLocation(shader, "projectionTransform"), 1, GL_FALSE, glm::value_ptr(projectionTransform));
     glUniformMatrix4fv(glGetUniformLocation(shader, "viewTransform"), 1, GL_FALSE, glm::value_ptr(viewTransform));
     
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                    1, GL_FALSE, glm::value_ptr(mirrorMat));
+
 
     // Renders:
     // 1) Floor Mesh: hasNormal, No for the rest
@@ -1832,7 +1835,11 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);
 
-    std::cout << mirrorMat[0][0] << " " << mirrorMat[1][1] << " " << mirrorMat[2][2] << std::endl;
+    glm::mat4 resetModel = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "modelTransform"),
+                    1, GL_FALSE, glm::value_ptr(resetModel));
+
+    // std::cout << mirrorMat[0][0] << " " << mirrorMat[1][1] << " " << mirrorMat[2][2] << std::endl;
 }
 
 void drawPostProcess() {
