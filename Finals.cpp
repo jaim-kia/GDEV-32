@@ -1540,10 +1540,9 @@ bool setup()
 
 glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
 {
-    // n must be normalized
     glm::mat4 M = glm::mat4(1.0f);
 
-    // I - 2(n ⊗ n) for the 3x3 rotation part
+    // I - 2(n cross n) for rotation
     M[0][0] = 1 - 2*n.x*n.x;
     M[0][1] =   - 2*n.y*n.x;
     M[0][2] =   - 2*n.z*n.x;
@@ -1556,7 +1555,7 @@ glm::mat4 buildReflectionMatrix(glm::vec3 n, float d)
     M[2][1] =   - 2*n.y*n.z;
     M[2][2] = 1 - 2*n.z*n.z;
 
-    // Translation component to account for plane not at origin
+    // translationn
     // t = 2 * d * n
     M[3][0] = 2*d*n.x;
     M[3][1] = 2*d*n.y;
@@ -1626,12 +1625,12 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
     // 7) Office
     glUniform1i(glGetUniformLocation(shader, "hasNormal"), 1); 
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, texture[12]);
-    // glActiveTexture(GL_TEXTURE1);
-    // glBindTexture(GL_TEXTURE_2D, texture[13]);
-    // glBindVertexArray(vaos[12]);
-    // glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture[12]);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture[13]);
+    glBindVertexArray(vaos[12]);
+    glDrawArrays(GL_TRIANGLES, 0, Office.size() / 11);
     
     // 8) Bus Station
     glActiveTexture(GL_TEXTURE0);
@@ -1696,7 +1695,7 @@ void drawScene(glm::mat4 projectionTransform, glm::mat4 viewTransform, glm::mat4
 
 
     /*---------------- INSTANCING FISH -----------------*/
-    // computeNextFishStates(static_cast<float>(glfwGetTime()));
+    computeNextFishStates(static_cast<float>(glfwGetTime()));
 
     // update fish matrices
     for (int i = 0; i < NUM_FISH; i++) {
@@ -2016,46 +2015,65 @@ void render()
     float clipD = glm::dot(clipNormal, mirrorPoint);
     glm::vec4 clipPlane = glm::vec4(clipNormal.x, clipNormal.y, clipNormal.z, -clipD);
 
-    // --- PASS 1: Draw mirror shape into stencil buffer ---
+    //  1: draw mirror into stencil buffer
     glEnable(GL_STENCIL_TEST);
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glStencilMask(0xFF);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); // don't write color
-    glDepthMask(GL_FALSE);                               // don't write depth
+    
+    // no need for color and depth for now
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
 
-    // draw ONLY the mirror quad
+    // the mirror:
     glBindVertexArray(vaos[10]);
     glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
 
+    // enable color and depth for the rest
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glDepthMask(GL_TRUE);
 
-    // --- PASS 2: Draw reflected scene, clipped to stencil ---
+    // 2: draw the scene (reflected) clipped to the stencil
     glStencilFunc(GL_EQUAL, 1, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     glStencilMask(0x00); // don't modify stencil anymore
-
     glDisable(GL_CULL_FACE);
 
-    // glm::vec4 clipPlane = glm::vec4(-n.x, -n.y, -n.z, d); // ax+by+cz+d form
+    // clipped plane to be used in vs
     glEnable(GL_CLIP_DISTANCE0);
     glUniform4fv(glGetUniformLocation(shader, "clipPlane"), 1, glm::value_ptr(clipPlane));
 
-
-    glFrontFace(GL_CW); // flip winding for reflected geometry
+    glFrontFace(GL_CW);
     drawScene(projectionTransform, viewTransform, mirrorMatrix);
     glFrontFace(GL_CCW);
 
     glDisable(GL_CLIP_DISTANCE0);
     glEnable(GL_CULL_FACE);
 
-    // --- PASS 3: Clear stencil, draw real world normally ---
+    // 3: mirror depth (placing mirror in the world):
+    // same stencil
+    glStencilFunc(GL_EQUAL, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilMask(0x00);
+
+    // no color but we need the depth
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); 
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_ALWAYS);
+
+    glBindVertexArray(vaos[10]);
+    glDrawArrays(GL_TRIANGLES, 0, MirrorPlane.size() / 11);
+
+    // revert back the normal and depth testing
+    glDepthFunc(GL_LESS);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    // 4: real world
     glStencilMask(0xFF);
     glClear(GL_STENCIL_BUFFER_BIT);
     glDisable(GL_STENCIL_TEST);
 
-    drawScene(projectionTransform, viewTransform); // identity mirrorMat, normal world
+    drawScene(projectionTransform, viewTransform);
     drawPostProcess();
 
     // print main camera pos every 1 second for debugging
